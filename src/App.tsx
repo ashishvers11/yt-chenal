@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { onSnapshot } from 'firebase/firestore';
 import {
@@ -51,6 +51,7 @@ import {
   clearYouTubeToken,
   signOutUser,
   clampStr,
+  makeSafeId,
   recordAiUsage,
   recordAuditLog,
 } from './lib/firebase';
@@ -313,10 +314,94 @@ export default function App() {
     }
   };
 
+  const [statsSyncing, setStatsSyncing] = useState(false);
+  const autoSyncedWorkspaceRef = useRef<string>('');
+
+  const handleSyncPublicChannelStats = async () => {
+    if (!channelProfile || !currentUser || !workspace || workspace.mode === 'new_creator') return;
+    const lookupQuery = channelProfile.channelHandle || channelProfile.channelId || channelProfile.channelName;
+    if (!lookupQuery) return;
+    setStatsSyncing(true);
+    try {
+      const res = await fetch('/api/v1/youtube/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelUrlOrHandle: lookupQuery }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.channel) return;
+
+      const ch = data.channel;
+      const now = new Date().toISOString();
+      const cleanLang = String(ch.language || channelProfile.language || 'Hinglish')
+        .replace(/\s*\(Primary communication.*?\)/gi, '')
+        .trim();
+
+      await updateDoc(doc(db, 'channelProfiles', workspace.workspaceId), {
+        channelName: clampStr(ch.channelName || channelProfile.channelName, 200, channelProfile.channelName),
+        channelHandle: clampStr(ch.channelHandle || channelProfile.channelHandle, 120, channelProfile.channelHandle),
+        channelId: clampStr(ch.channelId || channelProfile.channelId, 128, channelProfile.channelId),
+        country: clampStr(ch.country || channelProfile.country, 80, channelProfile.country),
+        language: clampStr(cleanLang, 100, 'Hinglish'),
+        subscriberCount: Math.max(0, Number(ch.subscriberCount ?? channelProfile.subscriberCount ?? 0)),
+        totalViews: Math.max(Number(channelProfile.totalViews || 0), Number(ch.totalViews || 0)),
+        videoCount: Math.max(0, Number(ch.videoCount ?? channelProfile.videoCount ?? 0)),
+        updatedAt: now,
+      });
+
+      // Also sync recent videos if none are tracked yet
+      if (videos.length === 0 && Array.isArray(ch.recentVideos) && ch.recentVideos.length > 0) {
+        for (const rv of ch.recentVideos.slice(0, 10)) {
+          const videoDocId = makeSafeId('vid');
+          await setDoc(doc(db, 'videos', videoDocId), {
+            videoDocId,
+            workspaceId: workspace.workspaceId,
+            ownerUid: currentUser.uid,
+            videoId: clampStr(rv.videoId || videoDocId, 128, videoDocId),
+            title: clampStr(rv.title || 'Uploaded Video', 300, 'Uploaded Video'),
+            description: clampStr(rv.description || '', 5000, ''),
+            publishedAt: clampStr(rv.publishedAt || now, 64, now),
+            format: rv.format === 'shorts' ? 'shorts' : 'long_form',
+            topic: clampStr(rv.topic || ch.channelName || channelProfile.niche, 200, 'General'),
+            views: Math.max(0, Number(rv.views || 0)),
+            likes: Math.max(0, Number(rv.likes || 0)),
+            comments: Math.max(0, Number(rv.comments || 0)),
+            avgViewDurationSec: 0,
+            avgPercentageViewed: 0,
+            ctr: 0,
+            dataSource: 'youtube_public_api',
+            createdAt: now,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Live channel stats sync error:', err);
+    } finally {
+      setStatsSyncing(false);
+    }
+  };
+
+  // Auto-sync live subscriber count & video count if 0 or stale when workspace loads
+  useEffect(() => {
+    if (!channelProfile || !workspace || !currentUser) return;
+    if (workspace.mode === 'new_creator') return;
+    if (autoSyncedWorkspaceRef.current === workspace.workspaceId) return;
+
+    if (
+      channelProfile.subscriberCount === 0 ||
+      channelProfile.videoCount === 0 ||
+      channelProfile.language.includes('Primary communication')
+    ) {
+      autoSyncedWorkspaceRef.current = workspace.workspaceId;
+      handleSyncPublicChannelStats();
+    }
+  }, [channelProfile?.workspaceId, channelProfile?.subscriberCount, workspace?.workspaceId]);
+
   const handleRefreshAudit = async () => {
     if (!channelProfile || !currentUser || !workspace) return;
     setAuditRefreshing(true);
     try {
+      await handleSyncPublicChannelStats();
       const res = await fetch('/api/v1/channel/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -737,11 +822,11 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col overflow-x-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="min-h-screen flex flex-col overflow-x-hidden bg-neutral-50 dark:bg-[#0f0f0f] text-neutral-900 dark:text-neutral-100">
       <ConfirmModal
         open={confirmDisconnectOpen}
         title="Disconnect YouTube Channel?"
-        description="This immediately clears any active OAuth session tokens and marks your YouTube channel connection as revoked. Your saved scripts and ideas will remain in your workspace."
+        description="This clears active OAuth tokens and marks your channel connection as revoked."
         confirmLabel="Disconnect Channel"
         onConfirm={handleConfirmDisconnectChannel}
         onCancel={() => setConfirmDisconnectOpen(false)}
@@ -749,60 +834,60 @@ export default function App() {
 
       <ConfirmModal
         open={confirmDeleteWorkspaceOpen}
-        title="Permanently Delete Creator Workspace?"
-        description="This will permanently delete your workspace profile, tracked videos, research reports, content ideas, scripts, and calendar events from Cloud Firestore. This action cannot be undone."
-        confirmLabel="Delete Entire Workspace"
+        title="Delete Creator Workspace?"
+        description="This permanently deletes your workspace profile, ideas, scripts, and calendar events."
+        confirmLabel="Delete Workspace"
         onConfirm={handleConfirmDeleteWorkspace}
         onCancel={() => setConfirmDeleteWorkspaceOpen(false)}
       />
 
-      {/* Strict 3-Zone Top Bar Contract */}
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-4 sm:gap-8 px-4 sm:px-6 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+      {/* Strict 3-Zone Top Bar Contract — YouTube Studio Style */}
+      <header className="sticky top-0 z-30 flex items-center justify-between gap-4 sm:gap-8 px-4 sm:px-6 py-3 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#181818]">
         {/* Zone 1: Single text element wordmark */}
         <button
           type="button"
           onClick={() => handleNavigate('overview')}
-          className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0"
+          className="text-base sm:text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-100 whitespace-nowrap shrink-0"
         >
           ASH Creator Studio
         </button>
 
         {/* Zone 2: 5 concise single-line text links */}
-        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-400">
+        <nav className="hidden md:flex items-center gap-6 text-xs font-medium text-neutral-600 dark:text-neutral-400">
           <button
             type="button"
             onClick={() => handleNavigate('overview')}
-            className="hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0"
+            className="hover:text-neutral-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
           >
-            Overview
+            Dashboard
           </button>
           <button
             type="button"
             onClick={() => handleNavigate('trend-radar')}
-            className="hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0"
+            className="hover:text-neutral-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
           >
             Research
           </button>
           <button
             type="button"
             onClick={() => handleNavigate('content-ideas')}
-            className="hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0"
+            className="hover:text-neutral-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
           >
-            Opportunities
+            Content Ideas
           </button>
           <button
             type="button"
             onClick={() => handleNavigate('script-studio')}
-            className="hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0"
+            className="hover:text-neutral-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
           >
             Video Script Studio
           </button>
           <button
             type="button"
             onClick={() => handleNavigate('analytics-lab')}
-            className="hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0"
+            className="hover:text-neutral-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
           >
-            Analytics Lab
+            Analytics
           </button>
         </nav>
 
@@ -811,74 +896,74 @@ export default function App() {
           <button
             type="button"
             onClick={() => handleNavigate('script-studio')}
-            className="px-3.5 sm:px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
+            className="px-4 py-1.5 text-xs font-semibold text-white bg-[#ff0033] hover:bg-red-600 rounded-full transition-colors whitespace-nowrap shrink-0"
           >
-            New Video Script
+            + Create Video Script
           </button>
         </div>
       </header>
 
       {/* Mobile Quick Navigation Bar (< md) */}
-      <div className="flex md:hidden items-center gap-2 overflow-x-auto px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-100/80 dark:bg-slate-900/80 text-xs">
+      <div className="flex md:hidden items-center gap-2 overflow-x-auto px-4 py-2 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#181818] text-xs">
         <button
           type="button"
           onClick={() => setMobileMenuOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold text-white bg-slate-900 dark:bg-slate-800 rounded-md whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold text-white bg-neutral-900 dark:bg-neutral-800 rounded-full whitespace-nowrap shrink-0"
         >
           <Menu className="w-3.5 h-3.5" />
-          <span>All 20 Modules</span>
+          <span>Menu</span>
         </button>
         <button
           type="button"
           onClick={() => handleNavigate('overview')}
-          className={`px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap shrink-0 ${
+          className={`px-3 py-1.5 rounded-full font-medium whitespace-nowrap shrink-0 ${
             activeNav === 'overview'
-              ? 'bg-rose-600 text-white'
-              : 'text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-950'
+              ? 'bg-[#ff0033] text-white'
+              : 'text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800'
           }`}
         >
-          Overview
-        </button>
-        <button
-          type="button"
-          onClick={() => handleNavigate('trend-radar')}
-          className={`px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap shrink-0 ${
-            activeNav === 'trend-radar'
-              ? 'bg-rose-600 text-white'
-              : 'text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-950'
-          }`}
-        >
-          Research
+          Dashboard
         </button>
         <button
           type="button"
           onClick={() => handleNavigate('content-ideas')}
-          className={`px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap shrink-0 ${
+          className={`px-3 py-1.5 rounded-full font-medium whitespace-nowrap shrink-0 ${
             activeNav === 'content-ideas'
-              ? 'bg-rose-600 text-white'
-              : 'text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-950'
+              ? 'bg-[#ff0033] text-white'
+              : 'text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800'
           }`}
         >
-          Content Ideas
+          Ideas
         </button>
         <button
           type="button"
           onClick={() => handleNavigate('script-studio')}
-          className={`px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap shrink-0 ${
+          className={`px-3 py-1.5 rounded-full font-medium whitespace-nowrap shrink-0 ${
             activeNav === 'script-studio'
-              ? 'bg-rose-600 text-white'
-              : 'text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-950'
+              ? 'bg-[#ff0033] text-white'
+              : 'text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800'
           }`}
         >
-          Video Script
+          Video Script (10s)
+        </button>
+        <button
+          type="button"
+          onClick={() => handleNavigate('visual-studio')}
+          className={`px-3 py-1.5 rounded-full font-medium whitespace-nowrap shrink-0 ${
+            activeNav === 'visual-studio'
+              ? 'bg-[#ff0033] text-white'
+              : 'text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800'
+          }`}
+        >
+          Visual Scenes
         </button>
         <button
           type="button"
           onClick={() => handleNavigate('analytics-lab')}
-          className={`px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap shrink-0 ${
+          className={`px-3 py-1.5 rounded-full font-medium whitespace-nowrap shrink-0 ${
             activeNav === 'analytics-lab'
-              ? 'bg-rose-600 text-white'
-              : 'text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-950'
+              ? 'bg-[#ff0033] text-white'
+              : 'text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800'
           }`}
         >
           Analytics
@@ -890,39 +975,39 @@ export default function App() {
         {/* Mobile Drawer Backdrop */}
         {mobileMenuOpen && (
           <div
-            className="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-xs lg:hidden"
+            className="fixed inset-0 z-30 bg-black/60 backdrop-blur-xs lg:hidden"
             onClick={() => setMobileMenuOpen(false)}
           />
         )}
 
-        {/* Left Sidebar Navigation (260px) */}
+        {/* Left Sidebar Navigation (240px YouTube Studio Rail) */}
         <aside
           className={`${
             mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40 block shadow-2xl' : 'hidden lg:block'
-          } w-64 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-y-auto`}
+          } w-60 shrink-0 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#181818] overflow-y-auto`}
         >
-          <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div className="p-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
             <div className="truncate">
-              <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+              <div className="text-xs font-bold text-neutral-900 dark:text-neutral-100 truncate">
                 {channelProfile.channelName}
               </div>
-              <div className="text-[11px] text-slate-500 truncate">
-                {channelProfile.channelHandle} · {workspace.mode === 'new_creator' ? 'New Creator' : 'Connected'}
+              <div className="text-[11px] text-neutral-500 truncate">
+                {channelProfile.channelHandle}
               </div>
             </div>
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}
-              className="lg:hidden p-1 text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
+              className="lg:hidden p-1 text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
-          <div className="p-3 space-y-5">
+          <div className="p-2.5 space-y-4">
             {SIDEBAR_GROUPS.map((group) => (
               <div key={group.groupTitle}>
-                <div className="px-2.5 mb-1.5 text-[11px] font-semibold text-slate-400 dark:text-slate-500">
+                <div className="px-2.5 mb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
                   {group.groupTitle}
                 </div>
                 <div className="space-y-0.5">
@@ -936,8 +1021,8 @@ export default function App() {
                         onClick={() => handleNavigate(item.id)}
                         className={`w-full flex items-center gap-2.5 px-2.5 py-2 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
                           isActive
-                            ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-semibold'
-                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
+                            ? 'bg-neutral-100 dark:bg-neutral-800 text-[#ff0033] font-semibold'
+                            : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/60 hover:text-neutral-900 dark:hover:text-neutral-100'
                         }`}
                       >
                         <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -952,49 +1037,45 @@ export default function App() {
         </aside>
 
         {/* Main Content Viewport */}
-        <main className="flex-1 min-w-0 px-4 sm:px-6 py-4 sm:py-6 max-w-6xl mx-auto w-full">
-          {/* Workspace Contextual Sub-Toolbar */}
-          <div className="mb-6 pb-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-slate-500">
+        <main className="flex-1 min-w-0 px-4 sm:px-6 py-4 sm:py-5 max-w-6xl mx-auto w-full">
+          {/* Compact YouTube Studio Status Bar */}
+          <div className="mb-5 pb-3 border-b border-neutral-200 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(true)}
-                className="hidden md:inline-flex lg:hidden items-center gap-1 px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-700 dark:text-slate-300"
+                className="hidden md:inline-flex lg:hidden items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-md text-neutral-700 dark:text-neutral-300"
               >
                 <Menu className="w-3.5 h-3.5" />
-                <span>Modules</span>
+                <span>Menu</span>
               </button>
-              <span className="font-medium text-slate-700 dark:text-slate-300">
-                Workspace: {workspace.workspaceName}
+              <span className="font-semibold text-neutral-800 dark:text-neutral-200">
+                {channelProfile.channelName}
               </span>
               <span aria-hidden="true">·</span>
-              <span>Niche: {channelProfile.niche}</span>
-              <span aria-hidden="true">·</span>
-              <span className="tabular-nums">
-                AI Calls: {usageRecords.length} / {userProfile?.dailyAiLimit || 50} daily
-              </span>
+              <span className="truncate max-w-xs">{channelProfile.niche}</span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => setShowOnboarding(true)}
-                className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 underline whitespace-nowrap shrink-0"
+                className="text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white underline whitespace-nowrap shrink-0"
               >
-                Switch / Reconnect Channel
+                Switch Channel
               </button>
               <button
                 type="button"
                 onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-full text-neutral-700 dark:text-neutral-300 whitespace-nowrap shrink-0"
               >
                 {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-                <span>{theme === 'dark' ? 'Light Theme' : 'Dark Theme'}</span>
+                <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
               </button>
               <button
                 type="button"
                 onClick={signOutUser}
-                className="inline-flex items-center gap-1 text-slate-600 dark:text-slate-400 hover:text-red-600 whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1 text-neutral-600 dark:text-neutral-400 hover:text-[#ff0033] whitespace-nowrap shrink-0"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Sign Out</span>
@@ -1006,189 +1087,99 @@ export default function App() {
           {activeNav === 'overview' && (
             <div>
               <ModuleBanner
-                title={`${channelProfile.channelName} — Creator Growth Command`}
-                whatItDoes="Synthesizes your channel profile, ranked content opportunities, active video script packages, and publishing schedule in one clean command view."
-                whyItMatters="Helps you move systematically from Research -> Opportunity Scoring -> Video Script & Visual Plan -> Published Performance Feedback."
-                howToUse="Review the 5-step Quick Start Guide below, or jump directly to Content Ideas or Video Script Studio."
-                nextActionLabel="Generate Ranked Content Ideas"
-                onNextAction={() => handleNavigate('content-ideas')}
+                title="Channel Dashboard"
+                whatItDoes="Overview of your live YouTube subscribers, videos, daily content ideas, and 10s–10m scripts."
+                nextActionLabel="+ New 10s / Video Script"
+                onNextAction={() => handleNavigate('script-studio')}
               />
 
-              {/* 4-Column KPI Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-                  <div className="text-xs text-slate-500">Channel Subscribers</div>
-                  <div className="mt-1 text-xl sm:text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
+              {/* 4-Column YouTube Studio KPI Row */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
+                <div className="p-4 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-neutral-500">Subscribers</span>
+                    {workspace.mode !== 'new_creator' && (
+                      <button
+                        type="button"
+                        onClick={handleSyncPublicChannelStats}
+                        disabled={statsSyncing}
+                        title="Sync live subscriber & video count from YouTube"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-md transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-2.5 h-2.5 ${statsSyncing ? 'animate-spin text-[#ff0033]' : ''}`} />
+                        <span>{statsSyncing ? 'Syncing...' : 'Sync Live'}</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-1 text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
                     {workspace.mode === 'new_creator' && channelProfile.subscriberCount === 0
-                      ? 'New Creator Mode'
+                      ? '0 (New)'
                       : channelProfile.subscriberCount.toLocaleString()}
                   </div>
-                  <div className="mt-1 text-[11px] text-slate-500 truncate">
-                    {channelProfile.channelHandle} · {channelProfile.language}
+                  <div className="mt-0.5 text-[11px] text-neutral-500 truncate">
+                    {channelProfile.channelHandle} · {channelProfile.videoCount.toLocaleString()} videos
                   </div>
                 </div>
 
-                <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-                  <div className="text-xs text-slate-500">Ranked Content Ideas</div>
-                  <div className="mt-1 text-xl sm:text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
+                <div className="p-4 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl">
+                  <div className="text-xs text-neutral-500">Content Ideas</div>
+                  <div className="mt-1 text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
                     {ideas.length}
                   </div>
-                  <div className="mt-1 text-[11px] text-slate-500">
+                  <div className="mt-0.5 text-[11px] text-neutral-500">
                     Top Score: {ideas[0]?.opportunityScore || 0}/100
                   </div>
                 </div>
 
-                <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-                  <div className="text-xs text-slate-500">Video Scripts Completed</div>
-                  <div className="mt-1 text-xl sm:text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
+                <div className="p-4 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl">
+                  <div className="text-xs text-neutral-500">Video Scripts</div>
+                  <div className="mt-1 text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
                     {scripts.length}
                   </div>
-                  <div className="mt-1 text-[11px] text-slate-500">
-                    With Hooks, Storyboards & SEO
+                  <div className="mt-0.5 text-[11px] text-neutral-500">
+                    10s Flow / Shorts / Long
                   </div>
                 </div>
 
-                <div className="p-4 sm:p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-                  <div className="text-xs text-slate-500">Research Reports & Audits</div>
-                  <div className="mt-1 text-xl sm:text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
-                    {reports.length + 1}
+                <div className="p-4 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl">
+                  <div className="text-xs text-neutral-500">Research & Views</div>
+                  <div className="mt-1 text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
+                    {reports.length + 1} <span className="text-xs font-normal text-neutral-500">reports</span>
                   </div>
-                  <div className="mt-1 text-[11px] text-slate-500">
-                    Confidence: {channelProfile.confidence.replace(/_/g, ' ')}
+                  <div className="mt-0.5 text-[11px] text-neutral-500 truncate">
+                    {channelProfile.language.replace(/\s*\(.*?\)/g, '')} · {channelProfile.totalViews.toLocaleString()} views
                   </div>
                 </div>
               </div>
-
-              {/* Step-by-Step How To Use ASH Creator Studio Guide */}
-              <div className="mb-6 p-4 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">
-                      Quick Start Workflow · How to Use ASH Creator Studio
-                    </div>
-                    <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 mt-0.5">
-                      5 Simple Steps from Research to Published YouTube Video
-                    </h2>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs text-slate-600 dark:text-slate-400 pt-1">
-                  <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
-                    <div className="font-bold text-slate-900 dark:text-slate-100">
-                      1. Channel Audit
-                    </div>
-                    <p className="mt-1">
-                      Check <strong>My Channel / Audit</strong> to review your niche positioning, strengths, and content gaps.
-                    </p>
-                  </div>
-                  <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
-                    <div className="font-bold text-slate-900 dark:text-slate-100">
-                      2. Research Radar
-                    </div>
-                    <p className="mt-1">
-                      Open <strong>Trend Radar</strong> or <strong>Competitor Research</strong> to discover rising topics and whitespace gaps.
-                    </p>
-                  </div>
-                  <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
-                    <div className="font-bold text-slate-900 dark:text-slate-100">
-                      3. Content Ideas
-                    </div>
-                    <p className="mt-1">
-                      Go to <strong>9. Content Ideas</strong>, generate scored video ideas (0–100), and click <strong>Write Script</strong>.
-                    </p>
-                  </div>
-                  <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
-                    <div className="font-bold text-slate-900 dark:text-slate-100">
-                      4. Video Script Studio
-                    </div>
-                    <p className="mt-1">
-                      In <strong>10. Video Script Studio</strong>, generate your full <strong>VIDEO</strong> script, hooks, Visual Storyboard, Thumbnail & SEO.
-                    </p>
-                  </div>
-                  <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
-                    <div className="font-bold text-slate-900 dark:text-slate-100">
-                      5. Calendar & Analytics
-                    </div>
-                    <p className="mt-1">
-                      Schedule in <strong>Content Calendar</strong> and track CTR, views, and watch time in <strong>Analytics Lab</strong>.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* New Creator Mode Starter Guide if applicable */}
-              {workspace.mode === 'new_creator' && (
-                <div className="mb-8 p-4 sm:p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
-                  <div className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                    New Creator Mode Active · Zero Fabricated Analytics
-                  </div>
-                  <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                    Your 4-Step First-Upload Blueprint
-                  </h2>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs text-slate-600 dark:text-slate-400 pt-1">
-                    <div>
-                      <div className="font-semibold text-slate-900 dark:text-slate-100">
-                        01. Validate Demand
-                      </div>
-                      <p className="mt-0.5">
-                        Use Trend Radar & Audience Research to find beginner questions in {channelProfile.niche}.
-                      </p>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-900 dark:text-slate-100">
-                        02. Score 4 Opportunities
-                      </div>
-                      <p className="mt-0.5">
-                        Pick an idea with High Production Feasibility so you finish your first upload without burnout.
-                      </p>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-900 dark:text-slate-100">
-                        03. Video Script + Visual Plan
-                      </div>
-                      <p className="mt-0.5">
-                        Generate your video script, non-clickbait hook, and scene-by-scene Visual Director storyboard.
-                      </p>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-900 dark:text-slate-100">
-                        04. Log Real Results
-                      </div>
-                      <p className="mt-0.5">
-                        Record your published video’s performance in Analytics Lab to train your AI Growth Coach.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* 2-Column Split: Recommended Next Actions & Recent Opportunities */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div className="p-5 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl space-y-3.5">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
                       AI Channel Audit — Priority Next Actions
                     </h2>
                     <button
                       type="button"
                       onClick={() => handleNavigate('channel-audit')}
-                      className="text-xs text-rose-600 dark:text-rose-400 hover:underline"
+                      className="text-xs text-[#ff0033] hover:underline font-medium"
                     >
                       Full Channel Audit
                     </button>
                   </div>
-                  <ul className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300">
+                  <ul className="space-y-2 text-xs text-neutral-700 dark:text-neutral-300">
                     {parsedRecommendations.map((rec, i) => (
                       <li
                         key={i}
-                        className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex items-start justify-between gap-3"
+                        className="p-3 bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-200 dark:border-neutral-800 rounded-lg flex items-start justify-between gap-3"
                       >
                         <span>
-                          <strong className="text-slate-900 dark:text-slate-100">0{i + 1}.</strong> {rec}
+                          <strong className="text-neutral-900 dark:text-neutral-100">0{i + 1}.</strong> {rec}
                         </span>
                         <button
                           type="button"
                           onClick={() => handleNavigate('content-ideas', rec)}
-                          className="text-rose-600 dark:text-rose-400 shrink-0 hover:underline"
+                          className="text-[#ff0033] font-medium shrink-0 hover:underline"
                         >
                           Act
                         </button>
@@ -1197,47 +1188,47 @@ export default function App() {
                   </ul>
                 </div>
 
-                <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4">
+                <div className="p-5 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl space-y-3.5">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    <h2 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
                       Top Ranked Content Opportunities
                     </h2>
                     <button
                       type="button"
                       onClick={() => handleNavigate('content-ideas')}
-                      className="text-xs text-rose-600 dark:text-rose-400 hover:underline"
+                      className="text-xs text-[#ff0033] hover:underline font-medium"
                     >
                       Open Opportunity Engine
                     </button>
                   </div>
 
                   {ideas.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-slate-500 border border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
-                      No content ideas generated yet. Click Generate Ranked Content Ideas above to discover high-fit topics.
+                    <div className="p-6 text-center text-xs text-neutral-500 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-lg">
+                      No content ideas generated yet. Open Opportunity Engine to generate daily fresh topics.
                     </div>
                   ) : (
-                    <div className="space-y-2.5">
+                    <div className="space-y-2">
                       {ideas.slice(0, 4).map((idea) => (
                         <div
                           key={idea.ideaId}
-                          className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex items-center justify-between gap-3 text-xs"
+                          className="p-3 bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-200 dark:border-neutral-800 rounded-lg flex items-center justify-between gap-3 text-xs"
                         >
                           <div className="truncate">
-                            <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                            <div className="font-semibold text-neutral-900 dark:text-neutral-100 truncate">
                               {idea.title}
                             </div>
-                            <div className="text-slate-500">
+                            <div className="text-neutral-500">
                               {idea.format.replace('_', '-')} · Competition: {idea.competitionLevel}
                             </div>
                           </div>
                           <div className="flex items-center gap-3 shrink-0">
-                            <span className="font-mono font-bold text-rose-600 dark:text-rose-400 tabular-nums">
+                            <span className="font-mono font-bold text-[#ff0033] tabular-nums">
                               {idea.opportunityScore}/100
                             </span>
                             <button
                               type="button"
                               onClick={() => handleNavigate('script-studio', idea.title)}
-                              className="text-slate-700 dark:text-slate-300 hover:underline"
+                              className="px-2.5 py-1 bg-neutral-200/70 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 rounded-md font-medium hover:bg-[#ff0033] hover:text-white transition-colors"
                             >
                               Script
                             </button>
@@ -1260,21 +1251,19 @@ export default function App() {
                     ? 'My Channel Profile & Positioning'
                     : 'Comprehensive AI Channel Audit'
                 }
-                whatItDoes="Evaluates your recurring upload themes, format balance, audience expectations, strengths, weaknesses, and untapped content opportunities."
-                whyItMatters="Keeps your channel positioning sharp and ensures every AI agent adapts to your specific audience and format."
-                howToUse="Click Refresh Channel Audit to re-analyze your channel profile and recent videos, or click any opportunity to generate video ideas."
+                whatItDoes="Evaluates your recurring upload themes, live subscriber/video telemetry, and high-leverage content opportunities."
                 nextActionLabel="Research Niche Clusters"
                 onNextAction={() => handleNavigate('niche-research', channelProfile.niche)}
               />
 
-              <div className="mb-6 p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="mb-6 p-5 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-neutral-800">
                   <div>
-                    <div className="text-xs text-slate-500">
-                      Channel ID: {channelProfile.channelId} · Confidence: {channelProfile.confidence} · Last Analyzed:{' '}
+                    <div className="text-xs text-neutral-500">
+                      Channel ID: {channelProfile.channelId} · Subscribers: {channelProfile.subscriberCount.toLocaleString()} · Videos: {channelProfile.videoCount.toLocaleString()} · Last Analyzed:{' '}
                       {new Date(channelProfile.lastAnalyzedAt).toLocaleDateString()}
                     </div>
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mt-0.5">
+                    <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">
                       {channelProfile.channelName} ({channelProfile.channelHandle})
                     </h2>
                   </div>
@@ -1283,81 +1272,81 @@ export default function App() {
                     type="button"
                     onClick={handleRefreshAudit}
                     disabled={auditRefreshing}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#ff0033] hover:bg-red-600 rounded-full transition-colors disabled:opacity-50 whitespace-nowrap shrink-0"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${auditRefreshing ? 'animate-spin' : ''}`} />
-                    <span>{auditRefreshing ? 'Re-Analyzing Channel...' : 'Refresh Channel Audit'}</span>
+                    <span>{auditRefreshing ? 'Re-Analyzing Channel...' : 'Refresh Channel & Live Stats'}</span>
                   </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                  <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
-                    <div className="text-slate-500">Primary Niche & Format</div>
-                    <div className="mt-1 font-semibold text-slate-900 dark:text-slate-100">
+                  <div className="p-4 bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-200 dark:border-neutral-800 rounded-lg">
+                    <div className="text-neutral-500">Primary Niche & Format</div>
+                    <div className="mt-1 font-semibold text-neutral-900 dark:text-neutral-100">
                       {channelProfile.niche}
                     </div>
-                    <div className="mt-1 text-slate-500">
-                      Format: {channelProfile.format} · Language: {channelProfile.language}
+                    <div className="mt-1 text-neutral-500">
+                      Format: {channelProfile.format} · Language: {channelProfile.language.replace(/\s*\(.*?\)/g, '')}
                     </div>
                   </div>
-                  <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
-                    <div className="text-slate-500">Sub-Niches</div>
-                    <div className="mt-1 font-medium text-slate-900 dark:text-slate-100">
+                  <div className="p-4 bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-200 dark:border-neutral-800 rounded-lg">
+                    <div className="text-neutral-500">Sub-Niches</div>
+                    <div className="mt-1 font-medium text-neutral-900 dark:text-neutral-100">
                       {parsedSubNiches.join(' · ') || 'General'}
                     </div>
                   </div>
-                  <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg">
-                    <div className="text-slate-500">Channel Positioning</div>
-                    <div className="mt-1 text-slate-800 dark:text-slate-200 leading-relaxed">
+                  <div className="p-4 bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-200 dark:border-neutral-800 rounded-lg">
+                    <div className="text-neutral-500">Channel Positioning</div>
+                    <div className="mt-1 text-neutral-800 dark:text-neutral-200 leading-relaxed">
                       {channelProfile.positioning}
                     </div>
                   </div>
                 </div>
 
-                <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs">
-                  <div className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
+                <div className="p-4 bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-200 dark:border-neutral-800 rounded-lg text-xs">
+                  <div className="font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
                     Estimated Audience Profile (Inferred from channel topics & public signals)
                   </div>
-                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <p className="text-neutral-600 dark:text-neutral-400 leading-relaxed">
                     {channelProfile.audienceProfile}
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2 text-xs">
-                  <div className="p-5 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2 text-xs">
+                  <div className="p-4 bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-200 dark:border-neutral-800 rounded-xl space-y-2">
                     <h3 className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
                       Channel Strengths
                     </h3>
-                    <ul className="space-y-1.5 text-slate-600 dark:text-slate-400">
+                    <ul className="space-y-1.5 text-neutral-600 dark:text-neutral-400">
                       {parsedStrengths.map((s, i) => (
                         <li key={i}>• {s}</li>
                       ))}
                     </ul>
                   </div>
 
-                  <div className="p-5 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                  <div className="p-4 bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-200 dark:border-neutral-800 rounded-xl space-y-2">
                     <h3 className="text-sm font-bold text-amber-600 dark:text-amber-400">
                       Bottlenecks & Weaknesses to Address
                     </h3>
-                    <ul className="space-y-1.5 text-slate-600 dark:text-slate-400">
+                    <ul className="space-y-1.5 text-neutral-600 dark:text-neutral-400">
                       {parsedWeaknesses.map((w, i) => (
                         <li key={i}>• {w}</li>
                       ))}
                     </ul>
                   </div>
 
-                  <div className="p-5 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
-                    <h3 className="text-sm font-bold text-rose-600 dark:text-rose-400">
+                  <div className="p-4 bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-200 dark:border-neutral-800 rounded-xl space-y-2">
+                    <h3 className="text-sm font-bold text-[#ff0033]">
                       High-Leverage Content Opportunities
                     </h3>
-                    <ul className="space-y-1.5 text-slate-600 dark:text-slate-400">
+                    <ul className="space-y-1.5 text-neutral-600 dark:text-neutral-400">
                       {parsedOpportunities.map((o, i) => (
                         <li key={i} className="flex items-start justify-between gap-2">
                           <span>• {o}</span>
                           <button
                             type="button"
                             onClick={() => handleNavigate('content-ideas', o)}
-                            className="text-rose-600 dark:text-rose-400 hover:underline shrink-0"
+                            className="text-[#ff0033] hover:underline shrink-0"
                           >
                             Explore
                           </button>
@@ -1366,11 +1355,11 @@ export default function App() {
                     </ul>
                   </div>
 
-                  <div className="p-5 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  <div className="p-4 bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-200 dark:border-neutral-800 rounded-xl space-y-2">
+                    <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
                       Recommended Next Improvements
                     </h3>
-                    <ul className="space-y-1.5 text-slate-600 dark:text-slate-400">
+                    <ul className="space-y-1.5 text-neutral-600 dark:text-neutral-400">
                       {parsedRecommendations.map((r, i) => (
                         <li key={i}>• {r}</li>
                       ))}

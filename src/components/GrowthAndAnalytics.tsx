@@ -451,47 +451,85 @@ export const GrowthAndAnalytics: React.FC<GrowthAndAnalyticsProps> = ({
         ? Math.round(shortsVideos.reduce((acc, v) => acc + v.views, 0) / shortsVideos.length)
         : 0;
 
+    const handleSyncPublicMetadataInLab = async () => {
+      if (!channelProfile) return;
+      setLoading(true);
+      setErrorMsg(null);
+      try {
+        const res = await fetch('/api/v1/youtube/discover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channelUrlOrHandle:
+              channelProfile.channelHandle || channelProfile.channelId || channelProfile.channelName,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data?.channel) throw new Error(data.error || 'Could not sync public channel stats.');
+        const ch = data.channel;
+        const now = new Date().toISOString();
+        await updateDoc(doc(db, 'channelProfiles', workspaceId), {
+          channelName: clampStr(ch.channelName || channelProfile.channelName, 200, channelProfile.channelName),
+          channelHandle: clampStr(ch.channelHandle || channelProfile.channelHandle, 120, channelProfile.channelHandle),
+          subscriberCount: Math.max(0, Number(ch.subscriberCount ?? channelProfile.subscriberCount ?? 0)),
+          totalViews: Math.max(Number(channelProfile.totalViews || 0), Number(ch.totalViews || 0)),
+          videoCount: Math.max(0, Number(ch.videoCount ?? channelProfile.videoCount ?? 0)),
+          updatedAt: now,
+        });
+      } catch (err: any) {
+        setErrorMsg(err.message || 'Public channel sync failed.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     return (
       <div>
         <ModuleBanner
           title={
             activeTab === 'analytics-lab'
-              ? 'Analytics Lab & Video Performance Comparison'
+              ? 'Analytics Lab & Video Performance'
               : 'Channel Growth & Format Performance Reports'
           }
-          whatItDoes="Connects authorized YouTube Analytics API v2 data (`yt-analytics.readonly`) and compares performance across your published formats and topics."
-          whyItMatters="Strictly separates verified private analytics, public view counts, and manual creator logs—never fabricating missing metrics."
-          howToUse="Click Sync Authorized YouTube Analytics to pull your last 28-day watch time and retention report via OAuth, or log published video results below."
+          whatItDoes="Displays live public channel subscribers, videos, and views alongside authorized YouTube Analytics API v2 reports."
           nextActionLabel="Consult AI Growth Coach on Metrics"
           onNextAction={() => onNavigate('growth-coach')}
         />
 
-        {/* Data Source & OAuth Sync Bar */}
-        <div className="mb-8 p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        {/* Data Source & Sync Bar */}
+        <div className="mb-6 p-5 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <div className="text-xs text-slate-500">
-              Current Connection Mode: {connection?.connectionMode || 'public_url'} · Private Analytics Status:{' '}
+            <div className="text-xs text-neutral-500">
+              Connection Mode: {connection?.connectionMode || 'public_url'} · Status:{' '}
               {latestSnapshot?.source === 'youtube_analytics_oauth'
                 ? 'Authorized OAuth Report Active'
-                : 'Public Metadata / Manual Tracking Only'}
+                : 'Public Channel Telemetry Active'}
             </div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 mt-0.5">
-              {channelProfile?.channelName || 'Creator Channel'} Performance Telemetry
+            <h2 className="text-base font-bold text-neutral-900 dark:text-neutral-100 mt-0.5">
+              {channelProfile?.channelName || 'Creator Channel'} ({channelProfile?.channelHandle})
             </h2>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-              A public channel URL alone cannot grant private Watch Time or Retention access. Authorize Google OAuth 2.0 to query `youtubeanalytics.googleapis.com/v2/reports`.
-            </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSyncYouTubeAnalytics}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap shrink-0"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Sync Authorized YouTube Analytics (OAuth)</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              onClick={handleSyncPublicMetadataInLab}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-neutral-800 dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-full transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span>Sync Public Subscribers & Views</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleSyncYouTubeAnalytics}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-[#ff0033] hover:bg-red-600 rounded-full transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span>Sync Private Analytics (OAuth)</span>
+            </button>
+          </div>
         </div>
 
         {errorMsg && (
@@ -501,50 +539,50 @@ export const GrowthAndAnalytics: React.FC<GrowthAndAnalyticsProps> = ({
         )}
 
         {/* Metrics Summary Strip */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-            <div className="text-xs text-slate-500">
-              {latestSnapshot ? `Views (${latestSnapshot.dateRange})` : 'Public Channel Views'}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="p-4 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl">
+            <div className="text-xs text-neutral-500">Live Subscribers</div>
+            <div className="mt-1 text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
+              {Number(channelProfile?.subscriberCount || 0).toLocaleString()}
             </div>
-            <div className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
+            <div className="mt-1 text-[11px] text-neutral-500">
+              Total Uploads: {Number(channelProfile?.videoCount || 0).toLocaleString()} videos
+            </div>
+          </div>
+
+          <div className="p-4 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl">
+            <div className="text-xs text-neutral-500">
+              {latestSnapshot ? `Views (${latestSnapshot.dateRange})` : 'Recent Public Views'}
+            </div>
+            <div className="mt-1 text-2xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
               {Number(
                 latestSnapshot ? latestSnapshot.views : channelProfile?.totalViews || 0
               ).toLocaleString()}
             </div>
-            <div className="mt-1 text-[11px] text-slate-500">
-              Source: {latestSnapshot ? latestSnapshot.source : 'Public Channel Statistics'}
+            <div className="mt-1 text-[11px] text-neutral-500">
+              Source: {latestSnapshot ? latestSnapshot.source : 'Public YouTube Feed'}
             </div>
           </div>
 
-          <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-            <div className="text-xs text-slate-500">Watch Time (Hours)</div>
-            <div className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
-              {latestSnapshot ? latestSnapshot.watchTimeHours.toLocaleString() : 'Requires OAuth'}
-            </div>
-            <div className="mt-1 text-[11px] text-slate-500">
-              {latestSnapshot ? 'Verified via YouTube Analytics API' : 'Not available via public URL'}
-            </div>
-          </div>
-
-          <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-            <div className="text-xs text-slate-500">Avg Percentage Viewed</div>
-            <div className="mt-1 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
-              {latestSnapshot ? `${latestSnapshot.avgPercentageViewed}%` : 'Requires OAuth'}
-            </div>
-            <div className="mt-1 text-[11px] text-slate-500">
+          <div className="p-4 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl">
+            <div className="text-xs text-neutral-500">Watch Time & Retention</div>
+            <div className="mt-1 text-xl font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
               {latestSnapshot
-                ? `Avg Duration: ${latestSnapshot.avgViewDurationSec}s`
-                : 'Connect OAuth or log below'}
+                ? `${latestSnapshot.watchTimeHours.toLocaleString()}h (${latestSnapshot.avgPercentageViewed}%)`
+                : 'OAuth Optional'}
+            </div>
+            <div className="mt-1 text-[11px] text-neutral-500">
+              {latestSnapshot ? 'Verified via YouTube Analytics API' : 'Private metric — connect OAuth'}
             </div>
           </div>
 
-          <div className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-            <div className="text-xs text-slate-500">Format Comparison (Avg Views)</div>
-            <div className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-slate-100">
-              Long: {avgLongViews.toLocaleString()} · Shorts: {avgShortsViews.toLocaleString()}
+          <div className="p-4 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-xl">
+            <div className="text-xs text-neutral-500">Format Avg Views</div>
+            <div className="mt-1 text-lg font-bold tabular-nums text-neutral-900 dark:text-neutral-100">
+              Shorts: {avgShortsViews.toLocaleString()} · Long: {avgLongViews.toLocaleString()}
             </div>
-            <div className="mt-1 text-[11px] text-slate-500 tabular-nums">
-              Across {videos.length} tracked workspace uploads
+            <div className="mt-1 text-[11px] text-neutral-500 tabular-nums">
+              Across {videos.length} tracked uploads
             </div>
           </div>
         </div>

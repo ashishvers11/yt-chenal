@@ -172,6 +172,20 @@ function pcmToWavBase64(pcmBase64: string, sampleRate = 24000): string {
  * Resolves @handle or channel URL directly from YouTube's public HTML & XML feed
  * without consuming Gemini API quota!
  */
+function parseYouTubeCountString(raw: string): number {
+  if (!raw) return 0;
+  const cleaned = raw.toUpperCase().replace(/,/g, '').trim();
+  const match = cleaned.match(/([0-9]+(?:\.[0-9]+)?)\s*([KMB])?/);
+  if (!match) return 0;
+  const num = parseFloat(match[1]);
+  if (isNaN(num)) return 0;
+  const mult = match[2];
+  if (mult === 'B') return Math.round(num * 1_000_000_000);
+  if (mult === 'M') return Math.round(num * 1_000_000);
+  if (mult === 'K') return Math.round(num * 1_000);
+  return Math.round(num);
+}
+
 async function fetchPublicYouTubeChannelDirect(input: string): Promise<any | null> {
   try {
     let targetUrl = '';
@@ -206,24 +220,54 @@ async function fetchPublicYouTubeChannelDirect(input: string): Promise<any | nul
       html.match(/<meta property="og:title" content="([^"]+)"/) ||
       html.match(/<title>([^<]+)<\/title>/);
     const descMatch = html.match(/<meta property="og:description" content="([^"]*)"/);
-    const handleMatch = html.match(/youtube\.com\/(@[a-zA-Z0-9_.\-]+)/);
+    const ogImgMatch = html.match(/<meta property="og:image" content="([^"]+)"/);
+    const handleMatch =
+      html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/(@[a-zA-Z0-9_.\-]+)"/) ||
+      html.match(/"canonicalBaseUrl":"\/(@[a-zA-Z0-9_.\-]+)"/) ||
+      html.match(/youtube\.com\/(@[a-zA-Z0-9_.\-]+)/);
 
-    // Try extracting subscriber count if visible in page JSON
-    const subMatch = html.match(/"subscriberCountText":\{"simpleText":"([^"]+)"/);
+    // Extract subscriber count from modern YouTube pageHeaderViewModel / contentMetadataViewModel or legacy subscriberCountText
+    const subRegexes = [
+      /"metadataParts":\[\{"text":\{"content":"([0-9.,]+\s*[KMBkmb]?\s*subscribers?)"\}/i,
+      /"text":\{"content":"([0-9.,]+\s*[KMBkmb]?\s*subscribers?)"\},"accessibilityLabel":"/i,
+      /"subscriberCountText":\{"simpleText":"([^"]+)"/i,
+      /"subscriberCountText":\{"accessibility":\{"accessibilityData":\{"label":"([^"]+)"/i,
+      /•\s*⁨?([0-9.,]+\s*[KMBkmb]?\s*subscribers?)⁩?/i,
+    ];
     let subscriberCount = 0;
-    if (subMatch?.[1]) {
-      const rawSub = subMatch[1].toUpperCase();
-      const num = parseFloat(rawSub.replace(/[^0-9.]/g, ''));
-      if (!isNaN(num)) {
-        if (rawSub.includes('M')) subscriberCount = Math.round(num * 1_000_000);
-        else if (rawSub.includes('K')) subscriberCount = Math.round(num * 1_000);
-        else subscriberCount = Math.round(num);
+    for (const rx of subRegexes) {
+      const m = html.match(rx);
+      if (m?.[1]) {
+        const parsedSub = parseYouTubeCountString(m[1]);
+        if (parsedSub > 0) {
+          subscriberCount = parsedSub;
+          break;
+        }
+      }
+    }
+
+    // Extract total video count from modern YouTube pageHeaderViewModel / contentMetadataViewModel
+    const vidRegexes = [
+      /"text":\{"content":"([0-9.,]+\s*[KMBkmb]?\s*videos?)"/i,
+      /"videosCountText":\{"runs":\[\{"text":"([^"]+)"/i,
+      /•\s*⁨?([0-9.,]+\s*[KMBkmb]?\s*videos?)⁩?/i,
+    ];
+    let headerVideoCount = 0;
+    for (const rx of vidRegexes) {
+      const m = html.match(rx);
+      if (m?.[1]) {
+        const parsedVid = parseYouTubeCountString(m[1]);
+        if (parsedVid > 0) {
+          headerVideoCount = parsedVid;
+          break;
+        }
       }
     }
 
     const channelId = channelIdMatch?.[1];
     const channelName = (titleMatch?.[1] || trimmed).replace(/ - YouTube$/, '').trim();
     const description = descMatch?.[1] || `Public YouTube channel ${channelName}`;
+    const avatarUrl = ogImgMatch?.[1] || '';
     const channelHandle =
       handleMatch?.[1] ||
       (trimmed.startsWith('@') ? trimmed : `@${channelName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()}`);
@@ -237,7 +281,7 @@ async function fetchPublicYouTubeChannelDirect(input: string): Promise<any | nul
       );
       if (rssRes.ok) {
         const xml = await rssRes.text();
-        const entries = xml.split('<entry>').slice(1, 9);
+        const entries = xml.split('<entry>').slice(1, 16);
         for (const entry of entries) {
           const vidId = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1] || `v_${Date.now()}`;
           const vTitle = entry.match(/<title>([^<]+)<\/title>/)?.[1] || 'Uploaded Video';
@@ -264,16 +308,24 @@ async function fetchPublicYouTubeChannelDirect(input: string): Promise<any | nul
 
     if (!channelId && !titleMatch) return null;
 
+    // Detect Indian / Hinglish / Hindi context from channel description & recent titles
+    const combinedText = `${channelName} ${description} ${recentVideos.map((v) => v.title).join(' ')}`;
+    const isIndianOrHinglish =
+      /🇮🇳|\b(india|indian|bhai|kardo|kaise|kya|nahi|hai|mera|aap|dosto|ff max|free fire|bgmi)\b/i.test(
+        combinedText
+      ) || /[\u0900-\u097F]/.test(combinedText);
+
     return {
       channelId: channelId || `pub_${Date.now()}`,
       channelName,
       channelHandle,
+      avatarUrl,
       description,
-      country: 'Global',
-      language: 'English',
+      country: isIndianOrHinglish ? 'India' : 'Global',
+      language: isIndianOrHinglish ? 'Hinglish' : 'English',
       subscriberCount,
       totalViews: totalRecentViews,
-      videoCount: recentVideos.length,
+      videoCount: headerVideoCount > 0 ? headerVideoCount : recentVideos.length,
       recentVideos,
       connectionMode: 'public_url',
     };
@@ -813,8 +865,18 @@ Return structured JSON matching the schema. Separate verified facts from estimat
 
 app.post('/api/v1/ideas/generate', async (req: Request, res: Response) => {
   try {
-    const { channelProfile, focusTopic, formatPreference, weights, count = 4 } = req.body;
+    const {
+      channelProfile,
+      focusTopic,
+      formatPreference,
+      weights,
+      count = 4,
+      excludeTitles = [],
+      variationSeed = Date.now(),
+    } = req.body;
+    const todayStr = new Date().toISOString().slice(0, 10);
     const topicSeed = focusTopic || channelProfile?.niche || 'YouTube Creator Strategy';
+    const existingList = Array.isArray(excludeTitles) ? excludeTitles.slice(0, 20) : [];
 
     const w = {
       audienceRelevance: weights?.audienceRelevance ?? 25,
@@ -840,11 +902,14 @@ app.post('/api/v1/ideas/generate', async (req: Request, res: Response) => {
       const { response, modelUsed } = await generateWithFallback({
         operation: 'opportunity_engine_ideas',
         contents: `You are the AI Content Opportunity Engine & Idea Generator for ASH Creator Studio.
+Current Date: ${todayStr} (Variation Seed: ${variationSeed})
 Channel Profile: ${JSON.stringify(channelProfile || {})}
 Creator Focus / Prompt: "${topicSeed}"
 Format Preference: "${formatPreference || 'both'}"
+Previously Generated Titles (DO NOT REPEAT THESE): ${JSON.stringify(existingList)}
 
-Generate ${Math.min(Number(count) || 4, 6)} distinct, research-backed video opportunities.
+Generate ${Math.min(Number(count) || 4, 6)} fresh, distinct, non-repeating, research-backed video opportunities tailored for today (${todayStr}).
+Ensure each idea explores a DIFFERENT angle (e.g., 1. Emerging Trend / News Breakdown, 2. Mistake / Myth-Busting, 3. Practical Experiment / Case Study, 4. High-Retention Short or Series).
 For each opportunity, evaluate 5 sub-scores from 0 to 100:
 1. audienceRelevanceScore (Weight: ${w.audienceRelevance}%)
 2. researchEvidenceScore (Weight: ${w.researchEvidence}%)
@@ -919,10 +984,25 @@ For each opportunity, evaluate 5 sub-scores from 0 to 100:
         usage: calculateUsage(response, modelUsed, 'opportunity_engine_ideas'),
       });
     } catch (aiErr: any) {
-      const fallbackTemplates = [
+      const subNiches: string[] = (() => {
+        try {
+          const parsedSub =
+            typeof channelProfile?.subNiches === 'string'
+              ? JSON.parse(channelProfile.subNiches)
+              : channelProfile?.subNiches;
+          return Array.isArray(parsedSub) && parsedSub.length > 0
+            ? parsedSub
+            : ['Step-by-Step Tutorials', 'Case Studies', 'Beginner Mistakes', 'Tool Breakdowns'];
+        } catch {
+          return ['Step-by-Step Tutorials', 'Case Studies', 'Beginner Mistakes', 'Tool Breakdowns'];
+        }
+      })();
+      const dynamicSub = subNiches[Math.abs(Number(variationSeed) || 0) % subNiches.length] || topicSeed;
+
+      const allArchetypes = [
         {
-          title: `${topicSeed}: The Practical Step-by-Step Breakdown Nobody Shows`,
-          description: `A clear, zero-fluff walkthrough of ${topicSeed} showing real execution from start to finish so beginners can replicate the workflow.`,
+          title: `${topicSeed}: The Practical Step-by-Step Breakdown Nobody Shows (${todayStr})`,
+          description: `A clear, zero-fluff walkthrough of ${topicSeed} showing real execution from start to finish so beginners can replicate the workflow today.`,
           category: 'Educational Deep Dive',
           format: formatPreference === 'shorts' ? 'shorts' : 'long_form',
           evidence: `High recurring search demand from viewers looking for actionable ${topicSeed} tutorials.`,
@@ -930,11 +1010,11 @@ For each opportunity, evaluate 5 sub-scores from 0 to 100:
           originalAngle: 'Open directly with the live working outcome in the first 8 seconds before explaining the steps.',
           difficulty: 'beginner',
           risks: 'Keep the middle setup section concise so pacing does not dip.',
-          audienceRelevanceScore: 90,
-          researchEvidenceScore: 84,
-          originalityScore: 86,
-          channelFitScore: 92,
-          productionFeasibilityScore: 88,
+          audienceRelevanceScore: 92,
+          researchEvidenceScore: 86,
+          originalityScore: 88,
+          channelFitScore: 93,
+          productionFeasibilityScore: 89,
         },
         {
           title: `I Tested 3 Different Approaches to ${topicSeed} — Here’s What Actually Worked`,
@@ -946,11 +1026,11 @@ For each opportunity, evaluate 5 sub-scores from 0 to 100:
           originalAngle: 'Use a clear 3-criterion scorecard on screen to compare each approach objectively.',
           difficulty: 'intermediate',
           risks: 'Requires preparing 3 concrete examples ahead of recording.',
-          audienceRelevanceScore: 88,
-          researchEvidenceScore: 82,
-          originalityScore: 85,
-          channelFitScore: 87,
-          productionFeasibilityScore: 78,
+          audienceRelevanceScore: 89,
+          researchEvidenceScore: 84,
+          originalityScore: 87,
+          channelFitScore: 88,
+          productionFeasibilityScore: 80,
         },
         {
           title: `Stop Making This 60-Second Mistake in ${topicSeed}`,
@@ -962,11 +1042,76 @@ For each opportunity, evaluate 5 sub-scores from 0 to 100:
           originalAngle: 'Visual side-by-side "Wrong Way vs Right Way" split in the first 3 seconds.',
           difficulty: 'beginner',
           risks: 'Must deliver the payoff before second 50.',
-          audienceRelevanceScore: 86,
-          researchEvidenceScore: 79,
-          originalityScore: 83,
-          channelFitScore: 88,
-          productionFeasibilityScore: 94,
+          audienceRelevanceScore: 87,
+          researchEvidenceScore: 81,
+          originalityScore: 85,
+          channelFitScore: 90,
+          productionFeasibilityScore: 95,
+        },
+        {
+          title: `Why 90% of Beginners Quit ${topicSeed} (And the 15-Minute Fix)`,
+          description: `Addresses the biggest hidden roadblock viewers face when starting ${topicSeed} (${dynamicSub}) and gives a repeatable checklist.`,
+          category: 'Problem Solver & Myth-Busting',
+          format: 'long_form',
+          evidence: 'Troubleshooting & mistake-recovery videos capture high-intent search traffic daily.',
+          competitionLevel: 'low',
+          originalAngle: 'Show a real failed attempt first, then diagnose the exact turning point.',
+          difficulty: 'beginner',
+          risks: 'Ensure the solution is demonstrated visually, not just talked about.',
+          audienceRelevanceScore: 91,
+          researchEvidenceScore: 85,
+          originalityScore: 89,
+          channelFitScore: 91,
+          productionFeasibilityScore: 87,
+        },
+        {
+          title: `${topicSeed} on a $0 Budget: Free Tools & Complete Workflow`,
+          description: `How solo creators and students can master ${topicSeed} without expensive gear or paid subscriptions.`,
+          category: 'Zero-Budget Blueprint',
+          format: 'long_form',
+          evidence: 'Zero-budget and free-alternative videos consistently earn high share-to-view ratios.',
+          competitionLevel: 'low',
+          originalAngle: 'Build a real project live using only free resources in under 10 minutes.',
+          difficulty: 'beginner',
+          risks: 'Verify all featured tools currently have an active free tier.',
+          audienceRelevanceScore: 93,
+          researchEvidenceScore: 83,
+          originalityScore: 86,
+          channelFitScore: 90,
+          productionFeasibilityScore: 92,
+        },
+        {
+          title: `What Changed in ${topicSeed} This Week (${todayStr} Update)`,
+          description: `Timely breakdown of the newest shift in ${topicSeed} and what viewers should stop doing immediately vs start doing today.`,
+          category: 'Daily / Weekly Trend Update',
+          format: formatPreference === 'shorts' ? 'shorts' : 'long_form',
+          evidence: 'Timely update videos capture fresh browse and search demand.',
+          competitionLevel: 'low',
+          originalAngle: 'Summarize the 3 biggest takeaways in the first 30 seconds for busy viewers.',
+          difficulty: 'beginner',
+          risks: 'Publish promptly while curiosity around the update is high.',
+          audienceRelevanceScore: 90,
+          researchEvidenceScore: 88,
+          originalityScore: 90,
+          channelFitScore: 89,
+          productionFeasibilityScore: 91,
+        },
+        {
+          title: `Beginner vs Pro: How Experts Actually Handle ${topicSeed}`,
+          description: `Contrasts how a first-timer approaches ${topicSeed} versus how an experienced practitioner gets 3x better results in half the time.`,
+          category: 'Comparison & Skill Upgrade',
+          format: 'long_form',
+          evidence: 'Beginner-vs-Pro formats appeal to both newcomers and intermediate viewers.',
+          competitionLevel: 'medium',
+          originalAngle: 'Split the video into 3 progressively harder levels (Level 1, Level 2, Level 3).',
+          difficulty: 'intermediate',
+          risks: 'Keep Level 1 relatable so beginners do not feel overwhelmed.',
+          audienceRelevanceScore: 88,
+          researchEvidenceScore: 82,
+          originalAngleScore: 87,
+          originalityScore: 87,
+          channelFitScore: 89,
+          productionFeasibilityScore: 84,
         },
         {
           title: `${topicSeed} From Scratch: 3-Part Starter Series`,
@@ -984,7 +1129,15 @@ For each opportunity, evaluate 5 sub-scores from 0 to 100:
           channelFitScore: 90,
           productionFeasibilityScore: 80,
         },
-      ].map((item) => ({
+      ];
+
+      // Filter out any titles already present in existingList so every click gives fresh topics
+      const unseen = allArchetypes.filter((a) => !existingList.includes(a.title));
+      const pool = unseen.length >= 4 ? unseen : allArchetypes;
+      const offset = Math.abs(Number(variationSeed) || 0) % pool.length;
+      const rotated = [...pool.slice(offset), ...pool.slice(0, offset)].slice(0, Math.min(Number(count) || 4, 6));
+
+      const fallbackTemplates = rotated.map((item) => ({
         ...item,
         opportunityScore: computeWeighted(item),
       }));
@@ -1008,10 +1161,12 @@ app.post('/api/v1/scripts/generate', async (req: Request, res: Response) => {
     const {
       topic,
       targetAudience,
-      format = 'long_form',
-      language = 'English',
-      targetDuration = '8-10 minutes',
-      visualStyle = 'Documentary',
+      format = 'shorts',
+      language = 'Hinglish',
+      targetDuration = 'Max 10 sec (Google Flow 1 Clip)',
+      sceneClipDuration = '5-10 sec per scene',
+      aiVideoTool = 'Google Flow / Veo (Max 8s-10s)',
+      visualStyle = 'Realistic Visuals',
       creatorInstructions = '',
       channelProfile,
     } = req.body;
@@ -1021,28 +1176,44 @@ app.post('/api/v1/scripts/generate', async (req: Request, res: Response) => {
       return;
     }
 
+    const durLower = String(targetDuration).toLowerCase();
+    const isMax10Sec = durLower.includes('10 sec') || durLower.includes('8 sec') || durLower.includes('10s');
+    const is15Sec = durLower.includes('15 sec') || durLower.includes('15s');
+    const is30Sec = durLower.includes('30 sec') || durLower.includes('30s');
+    const is60Sec = durLower.includes('60 sec') || durLower.includes('45-60') || durLower.includes('1 min');
+
+    const wordBudgetGuide = isMax10Sec
+      ? 'STRICT 10-SECOND LIMIT: Maximum 22 to 26 spoken words total across the entire script! Split into 2 fast scenes of 5 seconds each (00:00-00:05 and 00:05-00:10) or 1 single 10-second continuous shot (00:00-00:10).'
+      : is15Sec
+      ? 'STRICT 15-SECOND LIMIT: Maximum 35 to 40 spoken words total. Split into 2 to 3 scenes of 5-8 seconds each.'
+      : is30Sec
+      ? 'STRICT 30-SECOND LIMIT: Maximum 70 to 80 spoken words total. Split into 3 scenes of 10 seconds each (00:00-00:10, 00:10-00:20, 00:20-00:30).'
+      : is60Sec
+      ? 'STRICT 60-SECOND SHORT LIMIT: Maximum 135 to 150 spoken words total. Split into 6 scenes of 10 seconds each.'
+      : `Target total duration: ${targetDuration}. Keep every scene clip between 5 to 10 seconds for AI video generators.`;
+
     try {
       const { response, modelUsed } = await generateWithFallback({
         operation: 'script_production_suite',
-        contents: `You are the Master Production Orchestrator for ASH Creator Studio (Script Writer + Hook Optimizer + Visual Director + Thumbnail Planner + SEO Specialist + Voiceover Coach).
+        contents: `You are the Master Video Script & AI Video Scene Director for ASH Creator Studio.
 
 Topic: "${topic}"
-Target Audience: "${targetAudience || channelProfile?.audienceProfile || 'General YouTube viewers'}"
+Target Audience: "${targetAudience || channelProfile?.audienceProfile || 'YouTube viewers'}"
 Video Format: "${format}"
-Output Language: "${language}" (Write hooks, spoken script, and voiceover lines in ${language} — fully support English, Hindi, Hinglish, or the requested language)
-Target Duration: "${targetDuration}"
-Visual Production Format: "${visualStyle}" (Adapt camera, B-roll, and AI prompts specifically for ${visualStyle})
+Output Language: "${language}" (Write hooks, spoken script, and voiceover lines in ${language} — support English, Hindi, Hinglish)
+Target Total Video Duration: "${targetDuration}"
+Target AI Video Generator Tool: "${aiVideoTool}" (Per-Scene Clip Limit: ${sceneClipDuration})
+Visual Production Format: "${visualStyle}"
 Creator Instructions: "${creatorInstructions}"
-Channel Context: ${JSON.stringify(channelProfile || {})}
 
-Rules:
-- Never use misleading clickbait hooks or titles.
-- Include 3 distinct hooks scored on First-Second Clarity and Curiosity.
-- Write a complete, original, high-retention script with story structure, curiosity gaps, smooth transitions, and ending payoff + CTA options.
-- Create 4-6 scene-by-scene Visual Director blocks.
-- Create 3 Thumbnail Studio concepts.
-- Create an SEO Studio pack.
-- Create Voiceover Studio notes.`,
+CRITICAL TIMING RULES:
+- ${wordBudgetGuide}
+- Prefix every section in scriptContent with exact seconds, e.g., [00:00 - 00:05 | 5 sec] so the creator knows the exact timing.
+- For EVERY scene in "scenes", include:
+  - durationSec (exact integer seconds, e.g. 5, 8, or 10 — NEVER exceed 10 seconds per scene for AI video tools like Google Flow, Veo, Kling, Runway, Sora, Pika)
+  - timeRange (e.g. "00:00 - 00:05 (5 sec)" or "00:00 - 00:10 (10 sec)")
+  - aiToolTiming (e.g. "Google Flow / Veo: 8s-10s · Kling / Runway: 5s-10s · Luma / Pika: 5s")
+- Never use misleading clickbait. Keep text concise, punchy, and ready to copy into ${aiVideoTool}.`,
         config: {
           responseMimeType: 'application/json',
           responseSchema: {
@@ -1085,6 +1256,9 @@ Rules:
                   type: Type.OBJECT,
                   properties: {
                     sceneNumber: { type: Type.NUMBER },
+                    durationSec: { type: Type.NUMBER },
+                    timeRange: { type: Type.STRING },
+                    aiToolTiming: { type: Type.STRING },
                     voiceoverLine: { type: Type.STRING },
                     visualDescription: { type: Type.STRING },
                     cameraDirection: { type: Type.STRING },
@@ -1097,6 +1271,9 @@ Rules:
                   },
                   required: [
                     'sceneNumber',
+                    'durationSec',
+                    'timeRange',
+                    'aiToolTiming',
                     'voiceoverLine',
                     'visualDescription',
                     'cameraDirection',
@@ -1175,177 +1352,230 @@ Rules:
         usage: calculateUsage(response, modelUsed, 'script_production_suite'),
       });
     } catch (aiErr: any) {
-      // Multilingual-aware quota-safe production package fallback
+      // Multilingual-aware & exact duration-aware fallback (supports Max 10 sec Google Flow scripts!)
       const isHinglish = language.toLowerCase().includes('hinglish');
       const isHindi = language.toLowerCase() === 'hindi';
 
       const hook1 = isHinglish
-        ? `Agar aap ${topic} try kar rahe ho, toh shuruat ke 2 minute mein 90% log ek common galti karte hain — aur aaj hum usko live fix karenge.`
+        ? `90% log ${topic} mein ye 1 galti karte hain — dekho 10 second mein asli fix!`
         : isHindi
-        ? `जब हम ${topic} की शुरुआत करते हैं, तो अक्सर एक छोटी सी गलती पूरा परिणाम बदल देती है — आइए इसे सीधे उदाहरण से समझते हैं।`
-        : `Most people approach ${topic} backwards — spending hours on setup before testing the one variable that actually drives results.`;
+        ? `${topic} में 90% लोग यह 1 गलती करते हैं — 10 सेकंड में सही तरीका देखें!`
+        : `90% of people get ${topic} wrong — here is the exact fix in 10 seconds.`;
 
-      const scriptBody = isHinglish
-        ? `[HOOK - 0:00]\n${hook1}\n\n[PROOF & SETUP - 0:20]\nDekhiye, jab maine pehli baar ${topic} ko step-by-step test kiya, toh mujhe laga ki ज़्यादा tools use karne se better output aayega. Lekin asli difference sirf 3 core steps se aata hai.\n\n[PART 1: THE FOUNDATION - 1:15]\nSabse pehla step hai clarity. Jab aap ${topic} ko break down karte hain, toh focus is baat par rakhiye ki end viewer ko kya outcome chahiye. (${creatorInstructions || 'Keep examples practical and visual.'})\n\n[PART 2: THE STEP-BY-STEP WORKFLOW - 3:30]\nAb aate hain second aur sabse important step par. Yahan par hum theory skip karke seedha real workflow dekhenge taaki aap aaj hi isko replicate kar sakein.\n\n[PAYOFF & CTA - 7:15]\nAb aapke paas ${topic} ka complete blueprint hai. Agar aapko iska Part 2 chahiye, toh niche comment mein batayein ki aap kis step par stuck hain!`
-        : `[HOOK - 0:00]\n${hook1}\n\n[VISUAL PROOF & STAKES - 0:20]\nIn the next ${targetDuration}, we are going to strip away the complicated jargon around ${topic} and walk through the exact 3-stage system you can apply today.\n\n[SECTION 1: WHY THE OLD APPROACH FAILS - 1:15]\nWhen most beginners start with ${topic}, they overwhelm themselves with 10 different settings before validating the core foundation. Here is what happens when you simplify the input first.\n\n[SECTION 2: THE 3-STEP SYSTEM - 3:30]\nStep 1: Define the single measurable outcome.\nStep 2: Build a repeatable template adapted for ${visualStyle}.\nStep 3: Review feedback signals and iterate.\n\n[ENDING PAYOFF & CTA - 7:30]\nThat single adjustment changes how you execute ${topic} forever. Watch the next video on screen where we test this live on a real project.`;
+      const line2 = isHinglish
+        ? `Purana tarika chhodo, is 1-step workflow se ${topic} 3x fast kaam karta hai. Subscribe karo!`
+        : isHindi
+        ? `पुराना तरीका छोड़ें, इस 1-स्टेप वर्कफ़्लो से ${topic} को 3 गुना तेज़ बनाएं!`
+        : `Skip the manual setup and use this 1-step workflow to get 3x faster results today.`;
 
-      res.json({
-        scriptPackage: {
-          title: `${topic}: The Complete Practical Blueprint`,
-          hooks: [
-            {
-              hookText: hook1,
-              angle: 'Contrarian Mistake & Immediate Proof',
-              clarityScore: 92,
-              curiosityScore: 89,
-              whyItWorks: 'Establishes relevance in the first 5 seconds and opens a concrete curiosity loop.',
-            },
-            {
-              hookText: `Here is the exact side-by-side difference between an average ${topic} workflow and a structured system.`,
-              angle: 'Visual Comparison Hook',
-              clarityScore: 90,
-              curiosityScore: 85,
-              whyItWorks: 'Shows visual contrast immediately without clickbait exaggeration.',
-            },
-            {
-              hookText: `Before you spend another hour on ${topic}, test this 3-step checklist first.`,
-              angle: 'Direct Time-Saving Utility',
-              clarityScore: 94,
-              curiosityScore: 82,
-              whyItWorks: 'Promises clear, actionable utility aligned with viewer search intent.',
-            },
-          ],
-          scriptContent: scriptBody,
-          storyStructure: [
-            {
-              section: '01. Opening Hook & Visual Proof',
-              timestampEstimate: '0:00 - 0:30',
-              purpose: 'Confirm viewer search intent and show final outcome',
-              summary: 'Contrast the common beginner mistake with the streamlined workflow.',
-            },
-            {
-              section: '02. Root Cause Breakdown',
-              timestampEstimate: '0:30 - 2:30',
-              purpose: 'Build authority and reframe the problem',
-              summary: `Explain why standard advice on ${topic} often fails in practice.`,
-            },
-            {
-              section: '03. Step-by-Step Execution',
-              timestampEstimate: '2:30 - 6:45',
-              purpose: 'Deliver core educational value',
-              summary: 'Walk through the 3 concrete steps with visual callouts.',
-            },
-            {
-              section: '04. Final Payoff & Next Video Handoff',
-              timestampEstimate: '6:45 - End',
-              purpose: 'Session watch-time handoff',
-              summary: 'Summarize the key takeaway and point directly to a related video.',
-            },
-          ],
-          curiosityGaps: [
-            'Why the most popular setup step actually slows beginners down',
-            'The side-by-side result comparison revealed in Section 3',
-          ],
-          ctaOptions: [
-            'Comment which step of the workflow you want to see expanded in Part 2.',
-            'Watch the linked playlist next to see the live case study.',
-          ],
-          scenes: [
+      const line3 = isHinglish
+        ? `Step 2 mein isko live test karke dekho — result aapke samne hai!`
+        : `Test this second step live on your next project and compare the output immediately.`;
+
+      const scriptBody = isMax10Sec
+        ? `[SCENE 1 | 00:00 - 00:05 | 5 SEC — ${aiVideoTool}]\n${hook1}\n\n[SCENE 2 | 00:05 - 00:10 | 5 SEC — PAYOFF]\n${line2}`
+        : is15Sec
+        ? `[SCENE 1 | 00:00 - 00:05 | 5 SEC]\n${hook1}\n\n[SCENE 2 | 00:05 - 00:10 | 5 SEC]\n${line3}\n\n[SCENE 3 | 00:10 - 00:15 | 5 SEC]\n${line2}`
+        : `[SCENE 1 | 00:00 - 00:08 | 8 SEC — HOOK]\n${hook1}\n\n[SCENE 2 | 00:08 - 00:18 | 10 SEC — PROOF]\n${line3}\n\n[SCENE 3 | 00:18 - 00:28 | 10 SEC — PAYOFF & CTA]\n${line2}`;
+
+      const fallbackScenes = isMax10Sec
+        ? [
             {
               sceneNumber: 1,
+              durationSec: 5,
+              timeRange: '00:00 - 00:05 (5 sec)',
+              aiToolTiming: 'Google Flow / Veo: 5s–8s clip · Kling / Runway: 5s clip · Pika / Luma: 5s clip',
               voiceoverLine: hook1,
-              visualDescription: `High-contrast ${visualStyle} opening shot showing the before-and-after outcome of ${topic}.`,
-              cameraDirection: 'Medium close-up with subtle push-in over 4 seconds',
-              transition: 'Hard cut on beat',
-              onScreenText: `${topic.toUpperCase()}: 3-STEP SYSTEM`,
-              soundSuggestion: 'Subtle crisp whoosh + low documentary pulse',
-              aiImagePrompt: `Editorial studio visualization of ${topic}, clean high-contrast lighting, sharp focus, 16:9 aspect ratio`,
-              aiVideoPrompt: `Smooth camera push-in on a clean workspace demonstrating ${topic} in ${visualStyle} style`,
-              editingInstructions: 'Cut all silence before the first syllable; display on-screen text at 0:02.',
+              visualDescription: `High-impact ${visualStyle} opening shot of ${topic} with dynamic camera motion.`,
+              cameraDirection: 'Fast push-in close-up (0s to 5s)',
+              transition: 'Hard beat cut at 00:05',
+              onScreenText: `${topic.toUpperCase()} — 10s FIX`,
+              soundSuggestion: 'Crisp whoosh + bass hit',
+              aiImagePrompt: `Cinematic ${visualStyle} shot of ${topic}, ultra-detailed, studio lighting, 9:16 vertical or 16:9`,
+              aiVideoPrompt: `[Duration: 5s | Google Flow / Veo] Smooth cinematic camera push-in showing ${topic} in ${visualStyle} style, high contrast, realistic motion`,
+              editingInstructions: 'Clip 1: 00:00 to 00:05 (5 sec). Keep total clip under 10s limit.',
             },
             {
               sceneNumber: 2,
-              voiceoverLine: `Let's look at why the conventional approach to ${topic} creates friction.`,
-              visualDescription: 'Clean side-by-side diagram comparing the cluttered workflow vs the 3-step blueprint.',
-              cameraDirection: 'Static overhead or clean screen capture highlight',
-              transition: 'Smooth slide transition',
-              onScreenText: 'COMMON MISTAKE VS. CLEAN WORKFLOW',
-              soundSuggestion: 'Soft paper/UI click accent',
-              aiImagePrompt: `Minimalist technical diagram comparing two workflows for ${topic}, dark slate background, high legibility`,
-              aiVideoPrompt: `Animated flowchart highlighting 3 sequential steps for ${topic}`,
-              editingInstructions: 'Highlight each step sequentially as it is spoken.',
+              durationSec: 5,
+              timeRange: '00:05 - 00:10 (5 sec)',
+              aiToolTiming: 'Google Flow / Veo: 5s–8s clip · Kling / Runway: 5s clip · Sora: 5s–10s clip',
+              voiceoverLine: line2,
+              visualDescription: `Final working result of ${topic} revealed clearly on screen.`,
+              cameraDirection: 'Clean hero reveal shot (5s to 10s)',
+              transition: 'Loop back to start for Shorts retention',
+              onScreenText: '3X FASTER RESULT',
+              soundSuggestion: 'Success chime + subtle riser',
+              aiImagePrompt: `Hero reveal shot of ${topic} completed result, vibrant studio lighting, sharp focus`,
+              aiVideoPrompt: `[Duration: 5s | Google Flow / Veo] Dynamic reveal shot of ${topic} final outcome in ${visualStyle} style, crisp lighting`,
+              editingInstructions: 'Clip 2: 00:05 to 00:10 (5 sec). Total video = 10 seconds exact.',
+            },
+          ]
+        : [
+            {
+              sceneNumber: 1,
+              durationSec: 8,
+              timeRange: '00:00 - 00:08 (8 sec)',
+              aiToolTiming: 'Google Flow / Veo: 8s clip · Kling / Runway: 5s–10s clip · Sora: 8s–10s clip',
+              voiceoverLine: hook1,
+              visualDescription: `High-contrast ${visualStyle} opening shot showing ${topic}.`,
+              cameraDirection: 'Medium close-up push-in (8 sec)',
+              transition: 'Hard cut on beat',
+              onScreenText: `${topic.toUpperCase()}`,
+              soundSuggestion: 'Crisp whoosh + pulse',
+              aiImagePrompt: `Studio visualization of ${topic}, high-contrast lighting, sharp focus`,
+              aiVideoPrompt: `[Duration: 8s | Google Flow / Veo] Smooth camera push-in demonstrating ${topic} in ${visualStyle} style`,
+              editingInstructions: 'Scene 1 (00:00 - 00:08 | 8 sec).',
+            },
+            {
+              sceneNumber: 2,
+              durationSec: 10,
+              timeRange: '00:08 - 00:18 (10 sec)',
+              aiToolTiming: 'Google Flow / Veo: 8s–10s max · Kling / Runway: 10s clip · Pika/Luma: 2×5s clips',
+              voiceoverLine: line3,
+              visualDescription: `Side-by-side comparison of ${topic} workflow.`,
+              cameraDirection: 'Clean pan across workflow (10 sec)',
+              transition: 'Smooth cut',
+              onScreenText: 'STEP-BY-STEP PROOF',
+              soundSuggestion: 'UI click accent',
+              aiImagePrompt: `Minimalist visual comparison for ${topic}, dark studio background`,
+              aiVideoPrompt: `[Duration: 10s | Google Flow / Kling] Side-by-side demonstration of ${topic} in ${visualStyle} style`,
+              editingInstructions: 'Scene 2 (00:08 - 00:18 | 10 sec).',
             },
             {
               sceneNumber: 3,
-              voiceoverLine: 'Here is how to implement all three steps in under 15 minutes.',
-              visualDescription: `Step-by-step live demonstration of ${topic} with callout zoom boxes.`,
-              cameraDirection: '1.15x punch-in on key action area',
-              transition: 'J-cut audio into next demonstration clip',
-              onScreenText: 'STEP 1 -> STEP 2 -> STEP 3',
-              soundSuggestion: 'Subtle riser into resolution chime',
-              aiImagePrompt: `Detailed close-up of ${topic} execution in ${visualStyle} aesthetic, studio lighting`,
-              aiVideoPrompt: `Hands-on demonstration of ${topic} with clean studio lighting`,
-              editingInstructions: 'Use a J-cut so the voiceover leads the visual change by 0.5 seconds.',
+              durationSec: 10,
+              timeRange: '00:18 - 00:28 (10 sec)',
+              aiToolTiming: 'Google Flow / Veo: 8s–10s max · Kling / Runway: 10s clip · Sora: 10s clip',
+              voiceoverLine: line2,
+              visualDescription: `Final payoff demonstration of ${topic}.`,
+              cameraDirection: '1.15x punch-in on final result (10 sec)',
+              transition: 'Seamless loop',
+              onScreenText: 'FINAL PAYOFF',
+              soundSuggestion: 'Resolution chime',
+              aiImagePrompt: `Close-up of ${topic} final outcome in ${visualStyle} aesthetic`,
+              aiVideoPrompt: `[Duration: 10s | Google Flow / Veo] Final result showcase of ${topic} with studio lighting`,
+              editingInstructions: 'Scene 3 (00:18 - 00:28 | 10 sec).',
+            },
+          ];
+
+      res.json({
+        scriptPackage: {
+          title: `${topic} (${targetDuration})`,
+          hooks: [
+            {
+              hookText: hook1,
+              angle: '3-Second Instant Hook',
+              clarityScore: 95,
+              curiosityScore: 91,
+              whyItWorks: 'Fits inside the first 3–5 seconds for Google Flow / Shorts retention.',
+            },
+            {
+              hookText: `Stop doing ${topic} the slow way — watch this 10-second fix.`,
+              angle: 'Direct Time-Saver',
+              clarityScore: 93,
+              curiosityScore: 88,
+              whyItWorks: 'Clear promise with zero filler.',
+            },
+            {
+              hookText: `Before vs After: ${topic} in 10 seconds.`,
+              angle: 'Visual Proof Hook',
+              clarityScore: 94,
+              curiosityScore: 86,
+              whyItWorks: 'Works immediately with AI visual generation.',
             },
           ],
+          scriptContent: scriptBody,
+          storyStructure: isMax10Sec
+            ? [
+                {
+                  section: 'Scene 1: Instant Hook',
+                  timestampEstimate: '00:00 - 00:05 (5 sec)',
+                  purpose: 'Grab attention in first 5s clip',
+                  summary: hook1,
+                },
+                {
+                  section: 'Scene 2: Payoff & Loop',
+                  timestampEstimate: '00:05 - 00:10 (5 sec)',
+                  purpose: 'Deliver result within 10s max',
+                  summary: line2,
+                },
+              ]
+            : [
+                {
+                  section: 'Scene 1: Hook',
+                  timestampEstimate: '00:00 - 00:08 (8 sec)',
+                  purpose: 'Instant visual hook',
+                  summary: hook1,
+                },
+                {
+                  section: 'Scene 2: Core Action',
+                  timestampEstimate: '00:08 - 00:18 (10 sec)',
+                  purpose: 'Visual proof clip',
+                  summary: line3,
+                },
+                {
+                  section: 'Scene 3: Payoff',
+                  timestampEstimate: '00:18 - 00:28 (10 sec)',
+                  purpose: 'Final result & loop',
+                  summary: line2,
+                },
+              ],
+          curiosityGaps: [
+            'First 3-second visual contrast',
+            'Final payoff reveal before the clip ends',
+          ],
+          ctaOptions: [
+            'Subscribe for daily 10s tips',
+            'Comment Part 2 for the next workflow',
+          ],
+          scenes: fallbackScenes,
           thumbnailConcepts: [
             {
               conceptName: 'Before vs After Split',
-              thumbnailText: 'DO THIS INSTEAD',
-              visualHierarchy: 'Left side shows cluttered setup in muted tones; right side shows clean result with bold 3-word text.',
-              subjectPlacement: 'Primary subject on right rule-of-thirds intersection',
-              contrastGuidance: 'High luminance contrast between dark slate background and crisp white/rose text banner.',
-              imagePrompt: `Split screen YouTube thumbnail concept for ${topic}, clear visual comparison, studio lighting, no clutter, 16:9`,
+              thumbnailText: '10 SEC FIX',
+              visualHierarchy: 'Left side shows problem; right side shows clean result with bold 3-word text.',
+              subjectPlacement: 'Right rule-of-thirds focal point',
+              contrastGuidance: 'High contrast dark background with crisp white & red text.',
+              imagePrompt: `YouTube thumbnail for ${topic}, before vs after split, high contrast, studio lighting, 16:9`,
             },
             {
-              conceptName: 'Single Focal Object + Curiosity Question',
+              conceptName: 'Hero Close-Up',
               thumbnailText: '90% MISS THIS',
-              visualHierarchy: 'Single sharp hero element in center-left with a clean directional arrow to the key detail.',
-              subjectPlacement: 'Center-left focal anchor',
-              contrastGuidance: 'Keep background blurred (shallow depth of field) so the 3-word text pops immediately on mobile.',
-              imagePrompt: `Close-up studio photograph representing ${topic} with dramatic rim lighting and clean negative space for text, 16:9`,
+              visualHierarchy: 'Single sharp hero subject in center with directional arrow.',
+              subjectPlacement: 'Center focal anchor',
+              contrastGuidance: 'Blurred background so text pops on mobile.',
+              imagePrompt: `Close-up studio shot of ${topic} with dramatic rim lighting, 16:9`,
             },
             {
-              conceptName: '3-Step Blueprint Frame',
-              thumbnailText: 'THE 3-STEP SYSTEM',
-              visualHierarchy: 'Clean progression graphic showing Step 1, 2, and a highlighted Step 3.',
-              subjectPlacement: 'Balanced horizontal triad',
-              contrastGuidance: 'Use emerald highlight on the final step against a deep dark background.',
-              imagePrompt: `Clean modern educational diagram for ${topic} in a studio frame, high contrast, 16:9`,
+              conceptName: 'Fast Result Frame',
+              thumbnailText: 'DO THIS INSTEAD',
+              visualHierarchy: 'Clean visual outcome frame.',
+              subjectPlacement: 'Balanced composition',
+              contrastGuidance: 'Vibrant highlight against dark background.',
+              imagePrompt: `Modern high-contrast thumbnail for ${topic}, 16:9`,
             },
           ],
           seoData: {
             titles: [
-              `${topic}: The Complete Step-by-Step Guide`,
-              `How to Master ${topic} (Without Complicated Setup)`,
-              `${topic} Explained Clearly in ${targetDuration}`,
+              `${topic} in 10 Seconds!`,
+              `How to Master ${topic} Fast`,
+              `${topic}: The Mistake 90% Make`,
             ],
-            description: `Learn a practical, research-backed system for ${topic}. In this video, we break down the common pitfalls beginners face and walk through a repeatable 3-step workflow you can apply immediately.`,
+            description: `Quick, practical breakdown of ${topic} (${targetDuration}).`,
             keywords: [
               topic.toLowerCase(),
+              `${topic.toLowerCase()} shorts`,
               `${topic.toLowerCase()} tutorial`,
-              `${topic.toLowerCase()} guide`,
-              `${topic.toLowerCase()} for beginners`,
-              `${channelProfile?.niche || 'creator'} workflow`,
             ],
-            hashtags: ['#YouTubeCreator', '#ContentStrategy', `#${topic.replace(/[^a-zA-Z0-9]/g, '')}`],
-            chapters: [
-              '0:00 Hook & Visual Proof',
-              '1:15 Why Common Approaches Fail',
-              '3:30 The 3-Step Practical Workflow',
-              '7:15 Final Payoff & Next Steps',
-            ],
-            searchIntentExplanation:
-              'Targets high-intent learners searching for actionable how-to walkthroughs rather than vague clickbait.',
+            hashtags: ['#Shorts', '#YouTubeShorts', `#${topic.replace(/[^a-zA-Z0-9]/g, '')}`],
+            chapters: ['0:00 Hook (0-5s)', '0:05 Payoff (5-10s)'],
+            searchIntentExplanation: 'Optimized for fast Shorts feed & search discovery.',
           },
           voiceoverNotes: {
-            narrationScriptWithPauses: scriptBody.replace(/\n\n/g, ' [PAUSE 0.6s]\n\n'),
-            pronunciationNotes: [
-              'Emphasize the contrast words in the first 15 seconds.',
-              'Drop pitch slightly at the end of declarative sentences to project calm authority.',
-            ],
-            deliveryDirection:
-              'Conversational, brisk, and encouraging — speak as if explaining directly to one smart friend across a desk.',
+            narrationScriptWithPauses: scriptBody,
+            pronunciationNotes: ['Keep pace energetic — 2.5 words per second so it fits inside 10 seconds.'],
+            deliveryDirection: 'Crisp, fast, and high-energy.',
           },
         },
       });
