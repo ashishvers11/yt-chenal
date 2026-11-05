@@ -1,0 +1,527 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pillar 0: Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidIsoDate(val) {
+      return val is string && val.size() >= 10 && val.size() <= 64;
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        request.auth.token.email == 'anishakumari136x@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isWorkspaceOwner(workspaceId) {
+      return isValidId(workspaceId) &&
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)) &&
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerUid == request.auth.uid;
+    }
+
+    // Entity Blueprints (Anti-Update-Gap)
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'role', 'status', 'dailyAiLimit', 'monthlyAiLimit', 'preferences', 'inviteCodeUsed', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'email', 'role', 'status', 'dailyAiLimit', 'monthlyAiLimit', 'preferences', 'inviteCodeUsed', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.role is string && (data.role == 'creator' || data.role == 'super_admin') &&
+        data.status is string && (data.status == 'active' || data.status == 'suspended' || data.status == 'invited') &&
+        data.inviteCodeUsed is string && data.inviteCodeUsed.size() <= 64 &&
+        data.dailyAiLimit is number && data.dailyAiLimit >= 0 && data.dailyAiLimit <= 10000 &&
+        data.monthlyAiLimit is number && data.monthlyAiLimit >= 0 && data.monthlyAiLimit <= 300000 &&
+        data.preferences is string && data.preferences.size() <= 2000 &&
+        isValidIsoDate(data.createdAt) &&
+        isValidIsoDate(data.updatedAt);
+    }
+
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'createdAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        isValidIsoDate(data.createdAt);
+    }
+
+    function isValidWorkspace(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerUid', 'channelId', 'workspaceName', 'mode', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerUid', 'channelId', 'workspaceName', 'mode', 'createdAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerUid == request.auth.uid &&
+        data.channelId is string && data.channelId.size() <= 128 &&
+        data.workspaceName is string && data.workspaceName.size() >= 1 && data.workspaceName.size() <= 140 &&
+        data.mode is string && (data.mode == 'standard' || data.mode == 'new_creator') &&
+        isValidIsoDate(data.createdAt) &&
+        isValidIsoDate(data.updatedAt);
+    }
+
+    function isValidYouTubeConnection(data) {
+      return data.keys().hasAll(['connectionId', 'ownerUid', 'workspaceId', 'channelId', 'channelHandle', 'channelTitle', 'connectionMode', 'grantedScopes', 'connectionStatus', 'updatedAt']) &&
+        data.keys().hasOnly(['connectionId', 'ownerUid', 'workspaceId', 'channelId', 'channelHandle', 'channelTitle', 'connectionMode', 'grantedScopes', 'connectionStatus', 'updatedAt']) &&
+        isValidId(data.connectionId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerUid == request.auth.uid &&
+        isValidId(data.workspaceId) &&
+        data.channelId is string && data.channelId.size() <= 128 &&
+        data.channelHandle is string && data.channelHandle.size() <= 120 &&
+        data.channelTitle is string && data.channelTitle.size() <= 200 &&
+        data.connectionMode is string && (data.connectionMode == 'public_url' || data.connectionMode == 'oauth_connected' || data.connectionMode == 'new_creator') &&
+        data.grantedScopes is string && data.grantedScopes.size() <= 1000 &&
+        data.connectionStatus is string && (data.connectionStatus == 'connected' || data.connectionStatus == 'public_only' || data.connectionStatus == 'disconnected' || data.connectionStatus == 'revoked') &&
+        isValidIsoDate(data.updatedAt);
+    }
+
+    function isValidChannelProfile(data) {
+      return data.keys().hasAll(['workspaceId', 'ownerUid', 'channelName', 'channelHandle', 'channelId', 'country', 'niche', 'subNiches', 'language', 'format', 'audienceProfile', 'positioning', 'strengths', 'weaknesses', 'opportunities', 'recommendations', 'subscriberCount', 'totalViews', 'videoCount', 'confidence', 'isConfirmed', 'lastAnalyzedAt', 'updatedAt']) &&
+        data.keys().hasOnly(['workspaceId', 'ownerUid', 'channelName', 'channelHandle', 'channelId', 'country', 'niche', 'subNiches', 'language', 'format', 'audienceProfile', 'positioning', 'strengths', 'weaknesses', 'opportunities', 'recommendations', 'subscriberCount', 'totalViews', 'videoCount', 'confidence', 'isConfirmed', 'lastAnalyzedAt', 'updatedAt']) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerUid == request.auth.uid &&
+        data.channelName is string && data.channelName.size() >= 1 && data.channelName.size() <= 200 &&
+        data.channelHandle is string && data.channelHandle.size() <= 120 &&
+        data.channelId is string && data.channelId.size() <= 128 &&
+        data.country is string && data.country.size() <= 80 &&
+        data.niche is string && data.niche.size() >= 1 && data.niche.size() <= 200 &&
+        data.subNiches is string && data.subNiches.size() <= 1000 &&
+        data.language is string && data.language.size() >= 1 && data.language.size() <= 100 &&
+        data.format is string && data.format.size() <= 120 &&
+        data.audienceProfile is string && data.audienceProfile.size() <= 3000 &&
+        data.positioning is string && data.positioning.size() <= 2000 &&
+        data.strengths is string && data.strengths.size() <= 3000 &&
+        data.weaknesses is string && data.weaknesses.size() <= 3000 &&
+        data.opportunities is string && data.opportunities.size() <= 3000 &&
+        data.recommendations is string && data.recommendations.size() <= 3000 &&
+        data.subscriberCount is number && data.subscriberCount >= 0 &&
+        data.totalViews is number && data.totalViews >= 0 &&
+        data.videoCount is number && data.videoCount >= 0 &&
+        data.confidence is string && (data.confidence == 'high' || data.confidence == 'medium' || data.confidence == 'low' || data.confidence == 'new_creator_estimate') &&
+        data.isConfirmed is bool &&
+        isValidIsoDate(data.lastAnalyzedAt) &&
+        isValidIsoDate(data.updatedAt);
+    }
+
+    function isValidChannelVideo(data) {
+      return data.keys().hasAll(['videoDocId', 'workspaceId', 'ownerUid', 'videoId', 'title', 'description', 'publishedAt', 'format', 'topic', 'views', 'likes', 'comments', 'avgViewDurationSec', 'avgPercentageViewed', 'ctr', 'dataSource', 'createdAt']) &&
+        data.keys().hasOnly(['videoDocId', 'workspaceId', 'ownerUid', 'videoId', 'title', 'description', 'publishedAt', 'format', 'topic', 'views', 'likes', 'comments', 'avgViewDurationSec', 'avgPercentageViewed', 'ctr', 'dataSource', 'createdAt']) &&
+        isValidId(data.videoDocId) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerUid == request.auth.uid &&
+        data.videoId is string && data.videoId.size() <= 128 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 300 &&
+        data.description is string && data.description.size() <= 5000 &&
+        data.publishedAt is string && data.publishedAt.size() <= 64 &&
+        data.format is string && (data.format == 'long_form' || data.format == 'shorts' || data.format == 'live') &&
+        data.topic is string && data.topic.size() <= 200 &&
+        data.views is number && data.views >= 0 &&
+        data.likes is number && data.likes >= 0 &&
+        data.comments is number && data.comments >= 0 &&
+        data.avgViewDurationSec is number && data.avgViewDurationSec >= 0 &&
+        data.avgPercentageViewed is number && data.avgPercentageViewed >= 0 && data.avgPercentageViewed <= 200 &&
+        data.ctr is number && data.ctr >= 0 && data.ctr <= 100 &&
+        data.dataSource is string && (data.dataSource == 'youtube_public_api' || data.dataSource == 'youtube_analytics_api' || data.dataSource == 'manual_entry') &&
+        isValidIsoDate(data.createdAt);
+    }
+
+    function isValidResearchReport(data) {
+      return data.keys().hasAll(['reportId', 'workspaceId', 'ownerUid', 'reportType', 'queryTopic', 'summary', 'sources', 'findings', 'confidence', 'createdAt']) &&
+        data.keys().hasOnly(['reportId', 'workspaceId', 'ownerUid', 'reportType', 'queryTopic', 'summary', 'sources', 'findings', 'confidence', 'createdAt']) &&
+        isValidId(data.reportId) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerUid == request.auth.uid &&
+        data.reportType is string && (data.reportType == 'niche' || data.reportType == 'audience' || data.reportType == 'trends' || data.reportType == 'competitors' || data.reportType == 'fact_check' || data.reportType == 'audit' || data.reportType == 'retention') &&
+        data.queryTopic is string && data.queryTopic.size() >= 1 && data.queryTopic.size() <= 300 &&
+        data.summary is string && data.summary.size() >= 1 && data.summary.size() <= 5000 &&
+        data.sources is string && data.sources.size() <= 10000 &&
+        data.findings is string && data.findings.size() <= 25000 &&
+        data.confidence is string && (data.confidence == 'verified' || data.confidence == 'partially_verified' || data.confidence == 'estimate' || data.confidence == 'unverified' || data.confidence == 'conflicting_evidence') &&
+        isValidIsoDate(data.createdAt);
+    }
+
+    function isValidContentIdea(data) {
+      return data.keys().hasAll(['ideaId', 'workspaceId', 'ownerUid', 'title', 'description', 'category', 'format', 'evidence', 'competitionLevel', 'originalAngle', 'difficulty', 'risks', 'audienceRelevanceScore', 'researchEvidenceScore', 'originalityScore', 'channelFitScore', 'productionFeasibilityScore', 'opportunityScore', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['ideaId', 'workspaceId', 'ownerUid', 'title', 'description', 'category', 'format', 'evidence', 'competitionLevel', 'originalAngle', 'difficulty', 'risks', 'audienceRelevanceScore', 'researchEvidenceScore', 'originalityScore', 'channelFitScore', 'productionFeasibilityScore', 'opportunityScore', 'status', 'createdAt', 'updatedAt']) &&
+        isValidId(data.ideaId) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerUid == request.auth.uid &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 300 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 3000 &&
+        data.category is string && data.category.size() <= 100 &&
+        data.format is string && (data.format == 'long_form' || data.format == 'shorts' || data.format == 'series') &&
+        data.evidence is string && data.evidence.size() <= 3000 &&
+        data.competitionLevel is string && (data.competitionLevel == 'low' || data.competitionLevel == 'medium' || data.competitionLevel == 'high') &&
+        data.originalAngle is string && data.originalAngle.size() <= 2000 &&
+        data.difficulty is string && (data.difficulty == 'beginner' || data.difficulty == 'intermediate' || data.difficulty == 'advanced') &&
+        data.risks is string && data.risks.size() <= 2000 &&
+        data.audienceRelevanceScore is number && data.audienceRelevanceScore >= 0 && data.audienceRelevanceScore <= 100 &&
+        data.researchEvidenceScore is number && data.researchEvidenceScore >= 0 && data.researchEvidenceScore <= 100 &&
+        data.originalityScore is number && data.originalityScore >= 0 && data.originalityScore <= 100 &&
+        data.channelFitScore is number && data.channelFitScore >= 0 && data.channelFitScore <= 100 &&
+        data.productionFeasibilityScore is number && data.productionFeasibilityScore >= 0 && data.productionFeasibilityScore <= 100 &&
+        data.opportunityScore is number && data.opportunityScore >= 0 && data.opportunityScore <= 100 &&
+        data.status is string && (data.status == 'saved' || data.status == 'selected' || data.status == 'scripting' || data.status == 'filming' || data.status == 'published' || data.status == 'archived') &&
+        isValidIsoDate(data.createdAt) &&
+        isValidIsoDate(data.updatedAt);
+    }
+
+    function isValidScriptDocument(data) {
+      return data.keys().hasAll(['scriptId', 'workspaceId', 'ownerUid', 'ideaId', 'title', 'language', 'format', 'targetDuration', 'style', 'hooks', 'scriptContent', 'storyStructure', 'curiosityGaps', 'ctaOptions', 'scenes', 'seoData', 'thumbnailConcepts', 'voiceoverNotes', 'version', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['scriptId', 'workspaceId', 'ownerUid', 'ideaId', 'title', 'language', 'format', 'targetDuration', 'style', 'hooks', 'scriptContent', 'storyStructure', 'curiosityGaps', 'ctaOptions', 'scenes', 'seoData', 'thumbnailConcepts', 'voiceoverNotes', 'version', 'createdAt', 'updatedAt']) &&
+        isValidId(data.scriptId) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerUid == request.auth.uid &&
+        data.ideaId is string && data.ideaId.size() <= 128 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 300 &&
+        data.language is string && data.language.size() >= 1 && data.language.size() <= 80 &&
+        data.format is string && (data.format == 'long_form' || data.format == 'shorts') &&
+        data.targetDuration is string && data.targetDuration.size() <= 80 &&
+        data.style is string && data.style.size() <= 160 &&
+        data.hooks is string && data.hooks.size() <= 10000 &&
+        data.scriptContent is string && data.scriptContent.size() >= 1 && data.scriptContent.size() <= 50000 &&
+        data.storyStructure is string && data.storyStructure.size() <= 10000 &&
+        data.curiosityGaps is string && data.curiosityGaps.size() <= 5000 &&
+        data.ctaOptions is string && data.ctaOptions.size() <= 5000 &&
+        data.scenes is string && data.scenes.size() <= 40000 &&
+        data.seoData is string && data.seoData.size() <= 15000 &&
+        data.thumbnailConcepts is string && data.thumbnailConcepts.size() <= 15000 &&
+        data.voiceoverNotes is string && data.voiceoverNotes.size() <= 15000 &&
+        data.version is number && data.version >= 1 &&
+        isValidIsoDate(data.createdAt) &&
+        isValidIsoDate(data.updatedAt);
+    }
+
+    function isValidAnalyticsSnapshot(data) {
+      return data.keys().hasAll(['snapshotId', 'workspaceId', 'ownerUid', 'dateRange', 'source', 'views', 'watchTimeHours', 'avgViewDurationSec', 'avgPercentageViewed', 'subscribersGained', 'likes', 'comments', 'shares', 'impressions', 'ctr', 'topGeographies', 'deviceBreakdown', 'retentionNotes', 'syncedAt']) &&
+        data.keys().hasOnly(['snapshotId', 'workspaceId', 'ownerUid', 'dateRange', 'source', 'views', 'watchTimeHours', 'avgViewDurationSec', 'avgPercentageViewed', 'subscribersGained', 'likes', 'comments', 'shares', 'impressions', 'ctr', 'topGeographies', 'deviceBreakdown', 'retentionNotes', 'syncedAt']) &&
+        isValidId(data.snapshotId) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerUid == request.auth.uid &&
+        data.dateRange is string && data.dateRange.size() <= 100 &&
+        data.source is string && (data.source == 'youtube_analytics_oauth' || data.source == 'youtube_public_data' || data.source == 'manual_creator_log') &&
+        data.views is number && data.views >= 0 &&
+        data.watchTimeHours is number && data.watchTimeHours >= 0 &&
+        data.avgViewDurationSec is number && data.avgViewDurationSec >= 0 &&
+        data.avgPercentageViewed is number && data.avgPercentageViewed >= 0 &&
+        data.subscribersGained is number &&
+        data.likes is number && data.likes >= 0 &&
+        data.comments is number && data.comments >= 0 &&
+        data.shares is number && data.shares >= 0 &&
+        data.impressions is number && data.impressions >= 0 &&
+        data.ctr is number && data.ctr >= 0 && data.ctr <= 100 &&
+        data.topGeographies is string && data.topGeographies.size() <= 2000 &&
+        data.deviceBreakdown is string && data.deviceBreakdown.size() <= 2000 &&
+        data.retentionNotes is string && data.retentionNotes.size() <= 5000 &&
+        isValidIsoDate(data.syncedAt);
+    }
+
+    function isValidContentProject(data) {
+      return data.keys().hasAll(['projectId', 'workspaceId', 'ownerUid', 'projectName', 'topic', 'format', 'status', 'scheduledDate', 'slotType', 'ideaId', 'scriptId', 'notes', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['projectId', 'workspaceId', 'ownerUid', 'projectName', 'topic', 'format', 'status', 'scheduledDate', 'slotType', 'ideaId', 'scriptId', 'notes', 'createdAt', 'updatedAt']) &&
+        isValidId(data.projectId) &&
+        isValidId(data.workspaceId) &&
+        isValidId(data.ownerUid) &&
+        data.ownerUid == request.auth.uid &&
+        data.projectName is string && data.projectName.size() >= 1 && data.projectName.size() <= 240 &&
+        data.topic is string && data.topic.size() <= 300 &&
+        data.format is string && (data.format == 'long_form' || data.format == 'shorts' || data.format == 'series') &&
+        data.status is string && (data.status == 'draft' || data.status == 'researching' || data.status == 'scripting' || data.status == 'production' || data.status == 'ready_to_publish' || data.status == 'published') &&
+        data.scheduledDate is string && data.scheduledDate.size() <= 64 &&
+        data.slotType is string && (data.slotType == 'analytics_backed_slot' || data.slotType == 'testing_slot') &&
+        data.ideaId is string && data.ideaId.size() <= 128 &&
+        data.scriptId is string && data.scriptId.size() <= 128 &&
+        data.notes is string && data.notes.size() <= 5000 &&
+        isValidIsoDate(data.createdAt) &&
+        isValidIsoDate(data.updatedAt);
+    }
+
+    function isValidUsageRecord(data) {
+      return data.keys().hasAll(['recordId', 'uid', 'workspaceId', 'provider', 'model', 'operation', 'inputTokens', 'outputTokens', 'estimatedCostUsd', 'createdAt']) &&
+        data.keys().hasOnly(['recordId', 'uid', 'workspaceId', 'provider', 'model', 'operation', 'inputTokens', 'outputTokens', 'estimatedCostUsd', 'createdAt']) &&
+        isValidId(data.recordId) &&
+        isValidId(data.uid) &&
+        data.uid == request.auth.uid &&
+        data.workspaceId is string && data.workspaceId.size() <= 128 &&
+        data.provider is string && (data.provider == 'gemini' || data.provider == 'youtube_data' || data.provider == 'youtube_analytics' || data.provider == 'search_grounding' || data.provider == 'image_gen' || data.provider == 'voice_tts') &&
+        data.model is string && data.model.size() <= 120 &&
+        data.operation is string && data.operation.size() <= 160 &&
+        data.inputTokens is number && data.inputTokens >= 0 &&
+        data.outputTokens is number && data.outputTokens >= 0 &&
+        data.estimatedCostUsd is number && data.estimatedCostUsd >= 0 &&
+        isValidIsoDate(data.createdAt);
+    }
+
+    function isValidBetaInvitation(data) {
+      return data.keys().hasAll(['inviteId', 'email', 'inviteCode', 'status', 'invitedBy', 'maxDailyAiRequests', 'createdAt', 'expiresAt', 'updatedAt']) &&
+        data.keys().hasOnly(['inviteId', 'email', 'inviteCode', 'status', 'invitedBy', 'maxDailyAiRequests', 'createdAt', 'expiresAt', 'updatedAt']) &&
+        isValidId(data.inviteId) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.inviteCode is string && data.inviteCode.size() >= 4 && data.inviteCode.size() <= 64 &&
+        data.status is string && (data.status == 'pending' || data.status == 'accepted' || data.status == 'revoked' || data.status == 'expired') &&
+        data.invitedBy is string && data.invitedBy.size() <= 128 &&
+        data.maxDailyAiRequests is number && data.maxDailyAiRequests >= 1 && data.maxDailyAiRequests <= 5000 &&
+        isValidIsoDate(data.createdAt) &&
+        data.expiresAt is string && data.expiresAt.size() <= 64 &&
+        isValidIsoDate(data.updatedAt);
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['logId', 'actorUid', 'actorEmail', 'action', 'resource', 'details', 'createdAt']) &&
+        data.keys().hasOnly(['logId', 'actorUid', 'actorEmail', 'action', 'resource', 'details', 'createdAt']) &&
+        isValidId(data.logId) &&
+        isValidId(data.actorUid) &&
+        data.actorUid == request.auth.uid &&
+        data.actorEmail is string && data.actorEmail.size() <= 254 &&
+        data.action is string && data.action.size() >= 1 && data.action.size() <= 160 &&
+        data.resource is string && data.resource.size() >= 1 && data.resource.size() <= 200 &&
+        data.details is string && data.details.size() <= 2000 &&
+        isValidIsoDate(data.createdAt);
+    }
+
+    // 1. /users/{userId} (PII Isolated to Owner or Admin)
+    match /users/{userId} {
+      allow get: if isVerified() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isVerified() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isVerified() && isValidId(userId) && request.auth.uid == userId &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == userId &&
+        (incoming().role == 'creator' || (incoming().role == 'super_admin' && isAdmin()));
+      allow update: if isVerified() && isValidId(userId) && isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt && (
+          isAdmin() ||
+          (request.auth.uid == userId &&
+            incoming().role == existing().role &&
+            incoming().status == existing().status &&
+            incoming().dailyAiLimit == existing().dailyAiLimit &&
+            incoming().monthlyAiLimit == existing().monthlyAiLimit &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'preferences', 'inviteCodeUsed', 'updatedAt']))
+        );
+      allow delete: if isVerified() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+    }
+
+    // 2. /admins/{adminId}
+    match /admins/{adminId} {
+      allow get: if isVerified() && isValidId(adminId) && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(adminId) && isValidAdminRecord(incoming()) && incoming().uid == adminId;
+      allow update: if isAdmin() && isValidId(adminId) && isValidAdminRecord(incoming()) && incoming().uid == existing().uid && incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin() && isValidId(adminId);
+    }
+
+    // 3. /workspaces/{workspaceId} (Strictly Owner Isolated)
+    match /workspaces/{workspaceId} {
+      allow get: if isVerified() && isValidId(workspaceId) && existing().ownerUid == request.auth.uid;
+      allow list: if isVerified() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerified() && isValidId(workspaceId) && isValidWorkspace(incoming()) && incoming().workspaceId == workspaceId;
+      allow update: if isVerified() && isValidId(workspaceId) && isValidWorkspace(incoming()) &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['channelId', 'workspaceName', 'mode', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(workspaceId) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 4. /youtubeConnections/{connectionId} (Strictly Owner Isolated — Admin cannot access creator credentials)
+    match /youtubeConnections/{connectionId} {
+      allow get: if isVerified() && isValidId(connectionId) && existing().ownerUid == request.auth.uid;
+      allow list: if isVerified() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerified() && isValidId(connectionId) && isValidYouTubeConnection(incoming()) &&
+        incoming().connectionId == connectionId &&
+        isWorkspaceOwner(incoming().workspaceId);
+      allow update: if isVerified() && isValidId(connectionId) && isValidYouTubeConnection(incoming()) &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().connectionId == existing().connectionId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['channelId', 'channelHandle', 'channelTitle', 'connectionMode', 'grantedScopes', 'connectionStatus', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(connectionId) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 5. /channelProfiles/{workspaceId}
+    match /channelProfiles/{workspaceId} {
+      allow get: if isVerified() && isValidId(workspaceId) && existing().ownerUid == request.auth.uid;
+      allow list: if isVerified() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerified() && isValidId(workspaceId) && isValidChannelProfile(incoming()) &&
+        incoming().workspaceId == workspaceId &&
+        isWorkspaceOwner(workspaceId);
+      allow update: if isVerified() && isValidId(workspaceId) && isValidChannelProfile(incoming()) &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['channelName', 'channelHandle', 'channelId', 'country', 'niche', 'subNiches', 'language', 'format', 'audienceProfile', 'positioning', 'strengths', 'weaknesses', 'opportunities', 'recommendations', 'subscriberCount', 'totalViews', 'videoCount', 'confidence', 'isConfirmed', 'lastAnalyzedAt', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(workspaceId) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 6. /videos/{videoDocId}
+    match /videos/{videoDocId} {
+      allow get: if isVerified() && isValidId(videoDocId) && existing().ownerUid == request.auth.uid;
+      allow list: if isVerified() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerified() && isValidId(videoDocId) && isValidChannelVideo(incoming()) &&
+        incoming().videoDocId == videoDocId &&
+        isWorkspaceOwner(incoming().workspaceId);
+      allow update: if isVerified() && isValidId(videoDocId) && isValidChannelVideo(incoming()) &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().videoDocId == existing().videoDocId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'publishedAt', 'format', 'topic', 'views', 'likes', 'comments', 'avgViewDurationSec', 'avgPercentageViewed', 'ctr', 'dataSource']);
+      allow delete: if isVerified() && isValidId(videoDocId) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 7. /researchReports/{reportId}
+    match /researchReports/{reportId} {
+      allow get: if isVerified() && isValidId(reportId) && existing().ownerUid == request.auth.uid;
+      allow list: if isVerified() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerified() && isValidId(reportId) && isValidResearchReport(incoming()) &&
+        incoming().reportId == reportId &&
+        isWorkspaceOwner(incoming().workspaceId);
+      allow update: if isVerified() && isValidId(reportId) && isValidResearchReport(incoming()) &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().reportId == existing().reportId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['summary', 'sources', 'findings', 'confidence']);
+      allow delete: if isVerified() && isValidId(reportId) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 8. /contentIdeas/{ideaId}
+    match /contentIdeas/{ideaId} {
+      allow get: if isVerified() && isValidId(ideaId) && existing().ownerUid == request.auth.uid;
+      allow list: if isVerified() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerified() && isValidId(ideaId) && isValidContentIdea(incoming()) &&
+        incoming().ideaId == ideaId &&
+        isWorkspaceOwner(incoming().workspaceId);
+      allow update: if isVerified() && isValidId(ideaId) && isValidContentIdea(incoming()) &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().ideaId == existing().ideaId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'format', 'evidence', 'competitionLevel', 'originalAngle', 'difficulty', 'risks', 'audienceRelevanceScore', 'researchEvidenceScore', 'originalityScore', 'channelFitScore', 'productionFeasibilityScore', 'opportunityScore', 'status', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(ideaId) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 9. /scripts/{scriptId}
+    match /scripts/{scriptId} {
+      allow get: if isVerified() && isValidId(scriptId) && existing().ownerUid == request.auth.uid;
+      allow list: if isVerified() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerified() && isValidId(scriptId) && isValidScriptDocument(incoming()) &&
+        incoming().scriptId == scriptId &&
+        isWorkspaceOwner(incoming().workspaceId);
+      allow update: if isVerified() && isValidId(scriptId) && isValidScriptDocument(incoming()) &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().scriptId == existing().scriptId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'language', 'format', 'targetDuration', 'style', 'hooks', 'scriptContent', 'storyStructure', 'curiosityGaps', 'ctaOptions', 'scenes', 'seoData', 'thumbnailConcepts', 'voiceoverNotes', 'version', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(scriptId) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 10. /analyticsSnapshots/{snapshotId}
+    match /analyticsSnapshots/{snapshotId} {
+      allow get: if isVerified() && isValidId(snapshotId) && existing().ownerUid == request.auth.uid;
+      allow list: if isVerified() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerified() && isValidId(snapshotId) && isValidAnalyticsSnapshot(incoming()) &&
+        incoming().snapshotId == snapshotId &&
+        isWorkspaceOwner(incoming().workspaceId);
+      allow update: if isVerified() && isValidId(snapshotId) && isValidAnalyticsSnapshot(incoming()) &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().snapshotId == existing().snapshotId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['views', 'watchTimeHours', 'avgViewDurationSec', 'avgPercentageViewed', 'subscribersGained', 'likes', 'comments', 'shares', 'impressions', 'ctr', 'topGeographies', 'deviceBreakdown', 'retentionNotes', 'syncedAt']);
+      allow delete: if isVerified() && isValidId(snapshotId) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 11. /projects/{projectId}
+    match /projects/{projectId} {
+      allow get: if isVerified() && isValidId(projectId) && existing().ownerUid == request.auth.uid;
+      allow list: if isVerified() && resource.data.ownerUid == request.auth.uid;
+      allow create: if isVerified() && isValidId(projectId) && isValidContentProject(incoming()) &&
+        incoming().projectId == projectId &&
+        isWorkspaceOwner(incoming().workspaceId);
+      allow update: if isVerified() && isValidId(projectId) && isValidContentProject(incoming()) &&
+        existing().ownerUid == request.auth.uid &&
+        incoming().projectId == existing().projectId &&
+        incoming().ownerUid == existing().ownerUid &&
+        incoming().workspaceId == existing().workspaceId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['projectName', 'topic', 'format', 'status', 'scheduledDate', 'slotType', 'ideaId', 'scriptId', 'notes', 'updatedAt']);
+      allow delete: if isVerified() && isValidId(projectId) && existing().ownerUid == request.auth.uid;
+    }
+
+    // 12. /usageRecords/{recordId}
+    match /usageRecords/{recordId} {
+      allow get: if isVerified() && isValidId(recordId) && (existing().uid == request.auth.uid || isAdmin());
+      allow list: if isVerified() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isVerified() && isValidId(recordId) && isValidUsageRecord(incoming()) && incoming().recordId == recordId;
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(recordId);
+    }
+
+    // 13. /invitations/{inviteId}
+    match /invitations/{inviteId} {
+      allow get: if isVerified() && isValidId(inviteId) && (existing().email == request.auth.token.email || isAdmin());
+      allow list: if isVerified() && (resource.data.email == request.auth.token.email || isAdmin());
+      allow create: if isAdmin() && isValidId(inviteId) && isValidBetaInvitation(incoming()) && incoming().inviteId == inviteId;
+      allow update: if isVerified() && isValidId(inviteId) && isValidBetaInvitation(incoming()) &&
+        incoming().inviteId == existing().inviteId &&
+        incoming().email == existing().email &&
+        incoming().inviteCode == existing().inviteCode &&
+        incoming().createdAt == existing().createdAt && (
+          isAdmin() ||
+          (existing().email == request.auth.token.email &&
+            existing().status == 'pending' &&
+            incoming().status == 'accepted' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+        );
+      allow delete: if isAdmin() && isValidId(inviteId);
+    }
+
+    // 14. /auditLogs/{logId}
+    match /auditLogs/{logId} {
+      allow get: if isVerified() && isValidId(logId) && (existing().actorUid == request.auth.uid || isAdmin());
+      allow list: if isVerified() && (resource.data.actorUid == request.auth.uid || isAdmin());
+      allow create: if isVerified() && isValidId(logId) && isValidAuditLog(incoming()) && incoming().logId == logId;
+      allow update, delete: if false;
+    }
+  }
+}

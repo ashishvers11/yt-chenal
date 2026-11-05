@@ -1,0 +1,1340 @@
+# ASH Creator Studio
+## Complete Product Requirements Document (PRD)
+
+**Product:** ASH Creator Studio  
+**Tagline:** Your AI Partner for YouTube Growth  
+**Product type:** AI-powered, multi-user YouTube Creator Growth Platform  
+**Initial audience:** 50 invited beta users  
+**Platform:** Responsive web application, desktop-first  
+**Primary language:** English interface with multilingual AI output  
+**Initial AI provider:** Google Gemini API  
+**Primary integration:** YouTube Data API v3 + YouTube Analytics API  
+**Development environment:** Google AI Studio Build Mode
+
+---
+
+# 1. Product Vision
+
+ASH Creator Studio is an all-in-one AI-powered YouTube growth platform.
+
+A creator connects their YouTube channel. The platform studies the channel, identifies its niche, understands its audience, researches relevant topics, discovers content opportunities, creates video production plans and analyzes published-video performance.
+
+The platform must support:
+- Brand-new creators with no videos.
+- Small channels with limited analytics.
+- Growing channels.
+- Established creators.
+- Shorts creators.
+- Long-form creators.
+- Educational, entertainment, gaming, science, history, cooking, lifestyle, technology and other legitimate niches.
+- Multiple languages and regional audiences.
+
+**Core promise:** Help creators make better content decisions through research, structured workflows and performance feedback.
+
+The platform must never promise guaranteed views, subscribers, revenue or virality.
+
+# 2. Product Goals
+
+## Primary goals
+
+1. Make channel analysis automatic.
+2. Help creators discover what content to make next.
+3. Research ideas using available real-world evidence.
+4. Generate original, useful and audience-relevant scripts.
+5. Help beginners understand every step.
+6. Connect content decisions with actual channel analytics.
+7. Learn from each channel's performance history.
+8. Support up to 50 invited users during the initial beta.
+9. Keep every creator's data private and isolated.
+10. Allow future expansion into a paid SaaS product.
+
+## Success measurements
+
+Track:
+- Successful channel connections.
+- Completed channel audits.
+- Research reports generated.
+- Ideas saved and selected.
+- Scripts completed.
+- Videos published by creators.
+- Percentage of recommendations creators actually use.
+- User return rate.
+- AI cost per active user.
+- API error rate.
+- User feedback and satisfaction.
+
+Do not use view count alone as the measure of whether the product is successful.
+
+# 3. User Roles and Permissions
+
+## A. Super Admin
+
+The owner of ASH Creator Studio.
+
+Permissions:
+- View registered users.
+- Invite and suspend users.
+- Manage beta access.
+- Set AI usage limits.
+- Monitor API consumption.
+- View system errors.
+- Manage AI provider settings.
+- View application health.
+- Manage feature availability.
+- Review user feedback.
+- Manage system announcements.
+
+The admin must not automatically have access to private YouTube account credentials or unrestricted private creator data.
+
+## B. Creator
+
+Each creator gets an independent workspace.
+
+Permissions:
+- Connect their own channel.
+- Run channel analysis.
+- Research topics.
+- Generate content.
+- Save projects.
+- View their own analytics.
+- Manage their own integrations.
+- Export their own work.
+- Delete their own workspace and disconnect accounts.
+
+## C. Beta Invitation System
+
+Initial configuration:
+- Maximum 50 active invited users.
+- Registration through invitation.
+- Admin can revoke invitations.
+- No public registration during private beta.
+- Each account receives its own workspace.
+- Enforce usage limits per account.
+
+# 4. Main Application Navigation
+
+The application should have a clean professional dashboard.
+
+Main navigation:
+
+1. Overview
+2. My Channel
+3. Channel Audit
+4. AI Growth Coach
+5. Niche Research
+6. Audience Research
+7. Trend Radar
+8. Competitor Research
+9. Content Ideas
+10. Script Studio
+11. Retention Coach
+12. Visual Studio
+13. Thumbnail Studio
+14. SEO Studio
+15. Content Calendar
+16. Analytics Lab
+17. Growth Reports
+18. AI Chat Assistant
+19. Integrations
+20. Settings
+
+Admin navigation:
+- Admin Dashboard
+- User Management
+- Invitations
+- API Usage
+- AI Cost Monitoring
+- System Logs
+- Feature Controls
+- Feedback
+
+# 5. User Onboarding
+
+## Step 1: Create Account
+
+Support:
+- Google sign-in.
+- Email sign-in.
+- Email verification.
+- Secure session management.
+
+## Step 2: Connect YouTube Channel
+
+Provide two options:
+
+**Option A:** Enter a public YouTube channel URL or handle.
+
+**Option B:** Connect a Google account through OAuth and select the authenticated channel.
+
+The URL alone is sufficient for public channel analysis, but not private analytics.
+
+## Step 3: Discover Channel Information
+
+Automatically identify, where available:
+- Channel name.
+- Channel description.
+- Channel ID.
+- Channel country.
+- Channel language, if inferable.
+- Upload history.
+- Video titles.
+- Video descriptions.
+- Video formats.
+- Public view counts.
+- Public engagement signals.
+- Publishing patterns.
+- Recurring subjects.
+- Content categories.
+
+## Step 4: AI Channel Profile
+
+AI generates a proposed profile:
+
+- Primary niche.
+- Sub-niches.
+- Target audience.
+- Likely viewer interests.
+- Content language.
+- Video formats.
+- Channel positioning.
+- Content strengths.
+- Content weaknesses.
+- Opportunities.
+- Recommended improvements.
+
+Let the creator confirm or edit uncertain information.
+
+## Step 5: Personalized Workspace
+
+Generate a channel-specific dashboard.
+
+For channels with no videos, switch to New Creator Mode instead of inventing performance data.
+
+# 6. Core AI Intelligence Systems
+
+## Module 1: Channel Intelligence
+
+Purpose: Understand the complete channel.
+
+Functions:
+- Analyze recent uploads.
+- Identify recurring topics.
+- Classify video formats.
+- Compare performance across the channel's own videos.
+- Identify content patterns.
+- Detect inconsistent publishing.
+- Generate channel profile.
+- Generate a channel audit.
+
+Output:
+- Channel overview.
+- Strengths.
+- Weaknesses.
+- Content opportunities.
+- Recommended next actions.
+
+## Module 2: Niche Finder
+
+Purpose: Help creators understand their niche.
+
+Functions:
+- Primary niche detection.
+- Sub-niche discovery.
+- Related audience interests.
+- Topic clusters.
+- Content positioning.
+- Niche expansion suggestions.
+- Niche consistency analysis.
+
+Never force a creator into a niche based on one or two videos.
+
+## Module 3: Audience Research
+
+Purpose: Understand who might watch the content.
+
+Analyze available information:
+- Video topics.
+- Public comments.
+- Authorized audience analytics.
+- Available geography and device reports.
+- Viewer engagement patterns.
+
+Generate:
+- Audience interest groups.
+- Common questions.
+- Content problems to solve.
+- Viewer expectations.
+- Suggested video angles.
+
+Clearly label inferred audience characteristics as estimates, not verified personal identities.
+
+## Module 4: Trend Radar
+
+Purpose: Discover relevant emerging topics.
+
+Research sources:
+- YouTube search results.
+- Publicly available video metadata.
+- Google Trends API, if access is available.
+- Approved external search providers.
+- Relevant public sources.
+
+Functions:
+- Topic discovery.
+- Topic relevance.
+- Trend direction where measurable.
+- Competition signals.
+- Content freshness.
+- Topic saturation assessment.
+- Related topic suggestions.
+
+Do not label a topic as trending without supporting time-based evidence.
+
+## Module 5: Competitor Intelligence
+
+Purpose: Study relevant public competitor channels.
+
+Functions:
+- Discover similar channels.
+- Compare public video topics.
+- Analyze title patterns.
+- Compare upload frequency.
+- Identify recurring formats.
+- Find underserved topics.
+- Identify content gaps.
+- Compare public video performance signals.
+
+Important:
+Never claim access to competitors' private analytics.
+
+## Module 6: AI Content Opportunity Engine
+
+This is one of the most important modules.
+
+Combine:
+- Channel profile.
+- Audience research.
+- Topic demand signals.
+- Competitor research.
+- Previous video performance.
+- Creator preferences.
+- Production difficulty.
+
+Generate ranked content opportunities.
+
+Each opportunity must include:
+- Topic.
+- Audience relevance.
+- Why this topic matters.
+- Supporting evidence.
+- Competition assessment.
+- Original angle.
+- Suggested format.
+- Difficulty estimate.
+- Risks and uncertainties.
+
+Create a transparent scoring model, not a fake prediction of future views.
+
+Example scoring categories:
+- Audience relevance: 25%
+- Research evidence: 20%
+- Originality opportunity: 20%
+- Channel fit: 20%
+- Production feasibility: 15%
+
+These weights must be configurable and tested. Do not present the score as a probability of success.
+
+# 7. Content Production Systems
+
+## Module 7: Idea Generator
+
+Generate:
+- Educational ideas.
+- Entertainment ideas.
+- Storytelling ideas.
+- Shorts concepts.
+- Long-form concepts.
+- Series concepts.
+- Seasonal opportunities.
+- Beginner-friendly topics.
+
+Every idea must be connected to the creator's channel profile.
+
+## Module 8: Research and Fact Checker
+
+Before generating a factual script:
+1. Identify factual claims.
+2. Search reliable sources.
+3. Compare claims against sources.
+4. Identify disputed or uncertain claims.
+5. Remove unsupported statements.
+6. Save source links.
+7. Mark verification status.
+
+Status options:
+- Verified.
+- Partially verified.
+- Unverified.
+- Conflicting evidence.
+
+Never invent sources or citations.
+
+## Module 9: Script Studio
+
+Inputs:
+- Selected topic.
+- Target audience.
+- Video format.
+- Language.
+- Target duration.
+- Desired style.
+- Creator instructions.
+
+Outputs:
+- Multiple hook options.
+- Complete script.
+- Story structure.
+- Main information points.
+- Curiosity gaps.
+- Transitions.
+- Ending and payoff.
+- CTA options.
+
+Support:
+- Hindi.
+- English.
+- Hinglish.
+- Other languages supported by the model.
+
+Support both Shorts and long-form scripts.
+
+## Module 10: Hook Optimizer
+
+Evaluate:
+- First-second clarity.
+- Curiosity.
+- Relevance.
+- Originality.
+- Viewer expectations.
+- Hook-to-content connection.
+
+Generate alternative hooks and explain why they may work.
+
+Do not use misleading clickbait.
+
+## Module 11: Retention Coach
+
+Analyze:
+- Available video analytics.
+- Audience retention reports where supported.
+- Average view duration.
+- Average percentage viewed.
+- Engagement patterns.
+- Opening structure.
+- Pacing.
+- Story structure.
+
+Generate practical editing recommendations.
+
+If detailed retention data is unavailable, state that limitation and analyze only the available evidence.
+
+## Module 12: Visual Director
+
+Generate a production plan for each script.
+
+For each scene:
+- Scene number.
+- Voiceover line.
+- Visual description.
+- Camera direction.
+- Transition.
+- On-screen text.
+- Sound suggestion.
+- AI image prompt.
+- AI video prompt.
+- Editing instructions.
+
+Support:
+- Realistic visuals.
+- Animation.
+- Paper cut-out animation.
+- ASMR.
+- Documentary.
+- Faceless content.
+- Talking-head content.
+- Screen recordings.
+
+The AI must adapt to the creator's actual format.
+
+## Module 13: Thumbnail Studio
+
+Functions:
+- Thumbnail concept generation.
+- Text suggestions.
+- Visual hierarchy.
+- Subject placement.
+- Contrast guidance.
+- Image-generation prompts.
+- Multiple concept variations.
+
+Do not promise click-through-rate improvements without actual testing.
+
+## Module 14: Voiceover Studio
+
+Functions:
+- Narration text preparation.
+- Pronunciation notes.
+- Pause suggestions.
+- Emotion and delivery direction.
+- Voice provider integration.
+- Audio export where supported.
+
+Use provider adapters for Gemini audio or a separately configured voice service.
+
+Do not claim that an external voice provider is connected until credentials and a successful API test confirm it.
+
+## Module 15: SEO Studio
+
+Generate:
+- Video titles.
+- Descriptions.
+- Relevant keywords.
+- Hashtag suggestions.
+- Tags where supported.
+- Chapter suggestions for long videos.
+- Thumbnail text.
+- Search-intent explanations.
+
+Avoid keyword stuffing and unsupported ranking guarantees.
+
+## Module 16: Content Calendar
+
+Functions:
+- Weekly content planning.
+- Monthly content planning.
+- Topic scheduling.
+- Draft status.
+- Production status.
+- Publishing status.
+- Reminder support.
+- Testing upload slots.
+
+Upload-time suggestions must use the creator's actual audience activity reports when available. Otherwise, label them as testing slots.
+
+# 8. Analytics Lab
+
+Connect authorized YouTube Analytics data.
+
+Dashboard metrics may include:
+- Views.
+- Watch time.
+- Average view duration.
+- Average percentage viewed.
+- Subscribers gained.
+- Likes.
+- Comments.
+- Shares.
+- Impressions and click-through rate where supported.
+- Geography and device breakdowns where supported.
+
+Create:
+- Video performance comparison.
+- Weekly reports.
+- Monthly reports.
+- Content format comparison.
+- Topic performance comparison.
+- Growth trend reports.
+- Previous-period comparison.
+
+Do not invent missing metrics or treat public view counts as private Analytics data.
+
+# 9. AI Growth Coach
+
+This is the central assistant.
+
+It should answer questions such as:
+- What should I make today?
+- Why are my videos not getting views?
+- Which topic fits my channel?
+- What should I improve in my hooks?
+- Which previous video performed best?
+- What type of content should I test next?
+- How can I improve my next upload?
+
+The Growth Coach must:
+1. Read the user's channel profile.
+2. Retrieve relevant analytics.
+3. Use research tools where needed.
+4. Explain its reasoning.
+5. Give specific next actions.
+6. Show evidence and uncertainty.
+7. Save useful decisions to the creator workspace.
+
+It must not repeat generic advice without considering channel context.
+
+# 10. New Creator Mode
+
+For creators with no existing channel or analytics:
+
+- Explain YouTube basics.
+- Help select a niche.
+- Help identify a target audience.
+- Suggest first video topics.
+- Generate a starter content plan.
+- Explain Shorts versus long-form.
+- Provide beginner-friendly scripts.
+- Explain basic editing.
+- Track manually entered publishing results.
+
+Do not fabricate historical channel analytics.
+
+# 11. Recommended Technology Stack
+
+## Frontend
+- React.
+- TypeScript.
+- Tailwind CSS.
+- Responsive component system.
+- Chart library.
+- Form validation.
+- Accessible interface.
+
+## Backend
+- Node.js.
+- TypeScript.
+- Secure REST API.
+- Server-side AI orchestration.
+- Background jobs for longer research tasks.
+- Provider adapter architecture.
+
+## Database and Authentication
+- Firebase Authentication.
+- Cloud Firestore.
+- Firebase Cloud Storage.
+- Firebase Security Rules.
+- App Check where applicable.
+
+## Deployment
+- Google AI Studio Build Mode for development.
+- Cloud Run for server-side deployment.
+- GitHub for source-code version control.
+- Cloud logging and monitoring.
+
+Use separate development, staging and production environments.
+
+# 12. External API Integration Inventory
+
+All integrations must be implemented through server-side adapters. API credentials must never be exposed in browser code.
+
+## A. Google Gemini API — Required
+
+Purpose:
+- AI reasoning.
+- Channel analysis.
+- Idea generation.
+- Script writing.
+- Research synthesis.
+- Structured outputs.
+- Function calling.
+- Image generation where supported.
+
+Required capabilities:
+- Text generation.
+- Structured JSON output.
+- Function calling.
+- Multimodal input where needed.
+- Image generation where supported by the selected model.
+
+Implementation:
+- Central Gemini service.
+- Model configuration.
+- Token usage tracking.
+- Retry handling.
+- Rate-limit handling.
+- Output validation.
+
+## B. YouTube Data API v3 — Required
+
+Base URL:
+`https://www.googleapis.com/youtube/v3`
+
+Methods:
+
+| Method | Purpose |
+|---|---|
+| `channels.list` | Channel profile and public details |
+| `videos.list` | Video metadata and public statistics |
+| `playlistItems.list` | Channel upload history |
+| `search.list` | Public video and channel discovery |
+| `commentThreads.list` | Public video comments |
+| `comments.list` | Comment replies where available |
+
+Use:
+- Channel ID.
+- Video ID.
+- Playlist ID.
+- Pagination tokens.
+- Published timestamps.
+- Public statistics.
+
+Important: Search API quota is limited. Cache results and control repeated searches.
+
+## C. YouTube Analytics API — Required for Private Analytics
+
+Base URL:
+`https://youtubeanalytics.googleapis.com/v2`
+
+Main method:
+- `reports.query`
+
+Use supported combinations of:
+- Metrics.
+- Dimensions.
+- Date ranges.
+- Filters.
+- Sorting.
+
+Examples of analytics:
+- Views.
+- Watch time.
+- Average view duration.
+- Likes.
+- Comments.
+- Shares.
+- Subscribers gained.
+
+Request only metrics and dimensions that the selected report supports.
+
+## D. Google OAuth 2.0 — Required
+
+Purpose:
+- Secure Google account authorization.
+- Channel connection.
+- YouTube Analytics access.
+- Token refresh.
+- Permission revocation.
+
+Use minimum required scopes:
+
+Identity:
+- `openid`
+- `email`
+- `profile`
+
+YouTube public/private channel access:
+- `https://www.googleapis.com/auth/youtube.readonly`
+
+Analytics:
+- `https://www.googleapis.com/auth/yt-analytics.readonly`
+
+Do not request channel-management or publishing permissions in the initial beta.
+
+Use incremental authorization when adding optional permissions later.
+
+## E. Firebase Authentication — Required
+
+Purpose:
+- User login.
+- Google sign-in.
+- Email authentication.
+- Session identity.
+- Account management.
+
+## F. Cloud Firestore — Required
+
+Purpose:
+- User profiles.
+- Channel profiles.
+- Projects.
+- Ideas.
+- Scripts.
+- Research reports.
+- Analytics snapshots.
+- Preferences.
+- Usage records.
+
+## G. Firebase Cloud Storage — Required where files are needed
+
+Purpose:
+- Uploaded assets.
+- Generated thumbnails.
+- Audio files.
+- Exported reports.
+- User project assets.
+
+Apply per-user access rules.
+
+## H. Google Trends API — Optional
+
+Use only if access is granted to the official API.
+
+The current Google Trends API is in an alpha access program. Do not make the product depend on automatic approval.
+
+Fallback:
+- Trends website research.
+- Approved search provider.
+- YouTube public search data.
+
+Label data source and limitations.
+
+## I. External Web Research Provider — Optional but recommended
+
+Create a provider adapter for a search API.
+
+Potential providers:
+- Tavily.
+- SerpAPI.
+- Other approved web-search providers.
+
+Responsibilities:
+- Discover reliable sources.
+- Search topic demand signals.
+- Retrieve source metadata.
+- Support source verification.
+
+Do not scrape websites in ways that violate their terms or access restrictions.
+
+## J. Image Generation Provider — Optional
+
+Support Gemini image generation where available.
+
+Responsibilities:
+- Thumbnail concept creation.
+- Storyboard images.
+- Visual assets.
+- Image prompt workflows.
+
+## K. Voice Provider — Optional
+
+Support an adapter for a voice-generation provider such as ElevenLabs, subject to its API access, pricing and terms.
+
+Responsibilities:
+- Text-to-speech.
+- Voice selection.
+- Audio generation.
+- Audio file handling.
+
+## L. Video Generation Provider — Optional
+
+Use a provider adapter for services that officially support API integration.
+
+If a tool does not provide a supported API:
+- Generate a ready-to-use prompt.
+- Provide a manual handoff.
+- Do not pretend the video was generated.
+
+## M. Email Provider — Optional
+
+Use an approved email service for:
+- Invitation emails.
+- Login verification.
+- Notifications.
+- Account alerts.
+
+# 13. Internal Backend API Design
+
+All routes require authentication unless explicitly marked public.
+
+## Authentication and User
+
+- `GET /api/v1/me`
+- `PATCH /api/v1/me`
+- `POST /api/v1/invitations/accept`
+- `POST /api/v1/auth/logout`
+
+## YouTube Connection
+
+- `GET /api/v1/youtube/connect`
+- `GET /api/v1/youtube/callback`
+- `GET /api/v1/youtube/channels`
+- `POST /api/v1/youtube/select-channel`
+- `GET /api/v1/youtube/connection-status`
+- `POST /api/v1/youtube/disconnect`
+
+## Channel Intelligence
+
+- `POST /api/v1/channel/analyze`
+- `GET /api/v1/channel/profile`
+- `PATCH /api/v1/channel/profile`
+- `GET /api/v1/channel/audit`
+- `POST /api/v1/channel/audit/refresh`
+
+## Research
+
+- `POST /api/v1/research/niche`
+- `POST /api/v1/research/audience`
+- `POST /api/v1/research/trends`
+- `POST /api/v1/research/competitors`
+- `POST /api/v1/research/fact-check`
+- `GET /api/v1/research/:id`
+
+## Content
+
+- `POST /api/v1/ideas/generate`
+- `GET /api/v1/ideas`
+- `PATCH /api/v1/ideas/:id`
+- `POST /api/v1/scripts/generate`
+- `PATCH /api/v1/scripts/:id`
+- `POST /api/v1/scripts/:id/optimize`
+- `POST /api/v1/visuals/generate`
+- `POST /api/v1/thumbnails/generate`
+- `POST /api/v1/seo/generate`
+
+## Analytics
+
+- `POST /api/v1/analytics/sync`
+- `GET /api/v1/analytics/overview`
+- `GET /api/v1/analytics/videos`
+- `GET /api/v1/analytics/trends`
+- `GET /api/v1/analytics/reports`
+- `POST /api/v1/analytics/analyze`
+
+## Growth Coach
+
+- `POST /api/v1/coach/chat`
+- `POST /api/v1/coach/recommendations`
+- `GET /api/v1/coach/action-plan`
+
+## Projects and Calendar
+
+- `GET /api/v1/projects`
+- `POST /api/v1/projects`
+- `PATCH /api/v1/projects/:id`
+- `DELETE /api/v1/projects/:id`
+- `GET /api/v1/calendar`
+- `POST /api/v1/calendar/events`
+- `PATCH /api/v1/calendar/events/:id`
+
+## Admin
+
+- `GET /api/v1/admin/dashboard`
+- `GET /api/v1/admin/users`
+- `POST /api/v1/admin/invitations`
+- `PATCH /api/v1/admin/users/:id`
+- `GET /api/v1/admin/usage`
+- `GET /api/v1/admin/errors`
+- `PATCH /api/v1/admin/features`
+
+Every route must validate ownership, authentication, permissions and input data.
+
+# 14. Database Structure
+
+Use a multi-tenant structure with strict user isolation.
+
+Suggested Firestore collections:
+
+`users`
+- uid
+- displayName
+- email
+- role
+- createdAt
+- status
+- preferences
+
+`workspaces`
+- workspaceId
+- ownerUid
+- channelId
+- workspaceName
+- createdAt
+
+`youtubeConnections`
+- connectionId
+- ownerUid
+- channelId
+- encryptedCredentialReference
+- grantedScopes
+- connectionStatus
+- updatedAt
+
+`channelProfiles`
+- workspaceId
+- niche
+- subNiches
+- language
+- format
+- audienceProfile
+- confidence
+- lastAnalyzedAt
+
+`videos`
+- workspaceId
+- videoId
+- title
+- publishedAt
+- publicStatistics
+- format
+- topic
+
+`researchReports`
+- workspaceId
+- reportType
+- sources
+- findings
+- confidence
+- createdAt
+
+`contentIdeas`
+- workspaceId
+- title
+- description
+- evidence
+- opportunityScore
+- status
+- createdAt
+
+`scripts`
+- workspaceId
+- ideaId
+- language
+- scriptContent
+- duration
+- version
+- createdAt
+
+`analyticsSnapshots`
+- workspaceId
+- dateRange
+- metrics
+- source
+- syncedAt
+
+`projects`
+- workspaceId
+- projectName
+- status
+- assets
+- createdAt
+
+`usageRecords`
+- uid
+- provider
+- model
+- operation
+- tokens
+- estimatedCost
+- timestamp
+
+`invitations`
+- email
+- status
+- invitedBy
+- expiresAt
+
+`auditLogs`
+- actorUid
+- action
+- resource
+- timestamp
+
+Never store OAuth refresh tokens as readable client-side Firestore fields. Store secrets using an appropriately protected server-side secret store or encrypted credential storage with strict IAM controls.
+
+# 15. AI Agent Architecture
+
+Use one central orchestrator instead of allowing every agent to run independently.
+
+Agents:
+
+1. Channel Analyst
+2. Niche Researcher
+3. Audience Researcher
+4. Trend Researcher
+5. Competitor Analyst
+6. Fact Checker
+7. Content Strategist
+8. Idea Generator
+9. Script Writer
+10. Hook Optimizer
+11. Retention Analyst
+12. Visual Director
+13. Thumbnail Planner
+14. SEO Specialist
+15. Analytics Analyst
+16. Growth Coach
+
+Each agent must have:
+- Clear responsibility.
+- Defined input schema.
+- Defined output schema.
+- Tool permissions.
+- Evidence requirements.
+- Error handling.
+- Token budget.
+- Logging.
+
+The orchestrator should:
+1. Understand the creator's request.
+2. Load only relevant workspace data.
+3. Decide which agents are needed.
+4. Run required research.
+5. Validate the results.
+6. Combine the results.
+7. Return a useful answer.
+8. Save the result if requested.
+
+# 16. AI Output Quality Rules
+
+Every factual or strategic recommendation must follow these rules:
+
+- Never fabricate analytics.
+- Never fabricate research sources.
+- Never invent competitor metrics.
+- Never claim a trend without evidence.
+- Separate facts from assumptions.
+- Show source links for researched factual claims.
+- Explain uncertainty.
+- Avoid repetitive generic scripts.
+- Preserve creator originality.
+- Avoid misleading titles and thumbnails.
+- Provide editable outputs.
+- Never publish automatically without explicit creator approval.
+
+# 17. Security and Privacy Requirements
+
+Mandatory:
+- Google OAuth 2.0.
+- Minimum necessary scopes.
+- Server-side secret management.
+- Encrypted sensitive credentials.
+- Firebase Authentication.
+- Firestore Security Rules.
+- Role-based access control.
+- User-owned workspace isolation.
+- API rate limiting.
+- Input validation.
+- Audit logging.
+- Secure session handling.
+- CSRF protection where applicable.
+- Secure CORS configuration.
+- Data deletion workflow.
+- Token revocation workflow.
+- Backups and recovery plan.
+
+Do not expose:
+- Gemini API keys.
+- Google OAuth client secrets.
+- Refresh tokens.
+- Other users' data.
+- Internal administrator credentials.
+
+Run security-rule tests before beta release.
+
+# 18. API Usage and Cost Management
+
+For a 50-user beta, build a usage-control system from the beginning.
+
+Track:
+- Gemini input tokens.
+- Gemini output tokens.
+- Image generation requests.
+- Research API requests.
+- YouTube API requests.
+- Storage usage.
+- Voice generation usage.
+- Video generation usage.
+
+Admin controls:
+- Daily AI limit.
+- Monthly AI limit.
+- Per-user request limits.
+- Expensive feature restrictions.
+- Provider enable/disable.
+- Cost alerts.
+- Error alerts.
+
+Use caching for repeat channel and research requests.
+
+Never promise unlimited AI usage.
+
+# 19. User Interface Design
+
+Design direction:
+- Premium SaaS dashboard.
+- Clean, modern and professional.
+- Dark/light theme.
+- Clear typography.
+- Responsive desktop and mobile layout.
+- Simple onboarding.
+- Easy-to-read analytics.
+- Consistent icon system.
+- Useful empty states.
+- Clear loading states.
+- Friendly error messages.
+
+The interface must be easy for beginners.
+
+Every major module should include:
+- What this tool does.
+- Why it matters.
+- How to use it.
+- Example output.
+- Next recommended action.
+
+Avoid cluttering the dashboard with too many cards.
+
+# 20. Testing Requirements
+
+## Functional testing
+
+- User registration.
+- Google login.
+- Invitation access.
+- Channel URL parsing.
+- OAuth connection.
+- Channel selection.
+- Public channel analysis.
+- Private Analytics authorization.
+- AI research.
+- Script generation.
+- Saving projects.
+- Analytics synchronization.
+- Admin access.
+- User deletion.
+
+## Security testing
+
+- User A cannot access User B's workspace.
+- User A cannot access User B's reports.
+- Non-admin cannot access admin endpoints.
+- API keys are not visible in browser code.
+- OAuth tokens cannot be read by ordinary users.
+- Revoked connections stop working.
+- Invalid requests are rejected.
+
+## AI quality testing
+
+Test different channel types:
+- New education channel.
+- Gaming channel.
+- Cooking channel.
+- Science channel.
+- Entertainment channel.
+- Technology channel.
+- Shorts channel.
+- Long-form channel.
+
+Evaluate:
+- Relevance.
+- Originality.
+- Research accuracy.
+- Source quality.
+- Script quality.
+- Recommendation usefulness.
+- Correct uncertainty labels.
+
+## Beta release criteria
+
+Do not invite all 50 users until:
+- Login works.
+- Channel connection works.
+- User data isolation passes tests.
+- Channel analysis works.
+- AI idea generation works.
+- Script generation works.
+- Error logging works.
+- Usage tracking works.
+- Data deletion works.
+
+# 21. Development Roadmap
+
+## Phase 1 — Foundation
+
+Build:
+- Application shell.
+- Login.
+- Invitation system.
+- Admin role.
+- User workspace.
+- Firestore.
+- Security rules.
+- Google OAuth.
+- YouTube channel connection.
+
+## Phase 2 — Channel Intelligence
+
+Build:
+- Public channel analysis.
+- Upload history.
+- Channel profile.
+- Niche detection.
+- Channel audit.
+- New Creator Mode.
+
+## Phase 3 — Research Intelligence
+
+Build:
+- YouTube search.
+- Topic research.
+- Competitor discovery.
+- Audience research.
+- Fact checking.
+- Research reports.
+
+## Phase 4 — Content Studio
+
+Build:
+- Idea generation.
+- Idea scoring.
+- Script Studio.
+- Hook Optimizer.
+- Visual Director.
+- SEO Studio.
+- Thumbnail prompts.
+
+## Phase 5 — Analytics and Growth Coach
+
+Build:
+- YouTube Analytics integration.
+- Performance reports.
+- Video comparisons.
+- Growth recommendations.
+- Personalized action plans.
+
+## Phase 6 — Advanced Integrations
+
+Build:
+- Voice provider adapters.
+- Image generation.
+- Supported video provider adapters.
+- Content calendar.
+- Notifications.
+- Export system.
+- Desktop packaging if needed.
+
+# 22. Important Product Limitations
+
+1. A public channel URL cannot grant private analytics access.
+2. YouTube API quota can limit research volume.
+3. Google Trends API access may require approval.
+4. External AI and media services may charge separately.
+5. Some video-generation tools may not expose a supported public API.
+6. Analytics availability varies by channel, report and permission.
+7. YouTube does not provide a guarantee that AI recommendations will improve growth.
+8. The app must clearly distinguish real data, estimates and AI-generated suggestions.
+
+# 23. Final Product Acceptance Criteria
+
+ASH Creator Studio is ready for its first beta when a creator can:
+
+1. Receive an invitation.
+2. Create an account.
+3. Connect a YouTube channel.
+4. Receive an automatic channel analysis.
+5. Understand their niche and audience.
+6. Discover research-backed video ideas.
+7. Verify important factual claims.
+8. Generate a complete script.
+9. Receive scene-by-scene production guidance.
+10. Generate SEO and thumbnail concepts.
+11. Save and organize content projects.
+12. Connect private Analytics with consent.
+13. Receive personalized improvement recommendations.
+14. Track the results of published videos.
+15. Keep their account and data private.
+
+**Final product principle:**
+
+ASH Creator Studio should not simply generate content. It should help creators make informed content decisions, execute those decisions and learn from the results.
+
+**Build this as a scalable multi-user application from the beginning, but release features in tested phases.**

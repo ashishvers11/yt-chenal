@@ -1,0 +1,6 @@
+{
+  "name": "ASH Creator Studio",
+  "description": "Your AI Partner for YouTube Growth — an AI-powered, multi-user YouTube Creator Growth Platform with Channel Intelligence, Research Radar, Content Opportunity Engine, Script Studio, and Analytics Lab.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

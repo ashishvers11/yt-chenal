@@ -1,0 +1,356 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Registered user profile and role in ASH Creator Studio.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "role": { "type": "string", "enum": ["creator", "super_admin"] },
+        "status": { "type": "string", "enum": ["active", "suspended", "invited"] },
+        "inviteCodeUsed": { "type": "string", "maxLength": 64 },
+        "dailyAiLimit": { "type": "number" },
+        "monthlyAiLimit": { "type": "number" },
+        "preferences": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email", "role", "status", "dailyAiLimit", "monthlyAiLimit", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Super Admin lookup record for zero-trust RBAC verification.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "description": "Isolated creator workspace tied to a single owner UID.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "channelId": { "type": "string", "maxLength": 128 },
+        "workspaceName": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "mode": { "type": "string", "enum": ["standard", "new_creator"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerUid", "channelId", "workspaceName", "mode", "createdAt", "updatedAt"]
+    },
+    "YouTubeConnection": {
+      "title": "YouTubeConnection",
+      "description": "Metadata for a creator's YouTube channel connection without storing raw OAuth refresh tokens.",
+      "type": "object",
+      "properties": {
+        "connectionId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workspaceId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "channelId": { "type": "string", "maxLength": 128 },
+        "channelHandle": { "type": "string", "maxLength": 120 },
+        "channelTitle": { "type": "string", "maxLength": 200 },
+        "connectionMode": { "type": "string", "enum": ["public_url", "oauth_connected", "new_creator"] },
+        "grantedScopes": { "type": "string", "maxLength": 1000 },
+        "connectionStatus": { "type": "string", "enum": ["connected", "public_only", "disconnected", "revoked"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["connectionId", "ownerUid", "workspaceId", "channelId", "channelHandle", "channelTitle", "connectionMode", "grantedScopes", "connectionStatus", "updatedAt"]
+    },
+    "ChannelProfile": {
+      "title": "ChannelProfile",
+      "description": "AI-analyzed and creator-confirmed YouTube channel intelligence profile.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "channelName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "channelHandle": { "type": "string", "maxLength": 120 },
+        "channelId": { "type": "string", "maxLength": 128 },
+        "country": { "type": "string", "maxLength": 80 },
+        "niche": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "subNiches": { "type": "string", "maxLength": 1000 },
+        "language": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "format": { "type": "string", "maxLength": 120 },
+        "audienceProfile": { "type": "string", "maxLength": 3000 },
+        "positioning": { "type": "string", "maxLength": 2000 },
+        "strengths": { "type": "string", "maxLength": 3000 },
+        "weaknesses": { "type": "string", "maxLength": 3000 },
+        "opportunities": { "type": "string", "maxLength": 3000 },
+        "recommendations": { "type": "string", "maxLength": 3000 },
+        "subscriberCount": { "type": "number" },
+        "totalViews": { "type": "number" },
+        "videoCount": { "type": "number" },
+        "confidence": { "type": "string", "enum": ["high", "medium", "low", "new_creator_estimate"] },
+        "isConfirmed": { "type": "boolean" },
+        "lastAnalyzedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "ownerUid", "channelName", "channelHandle", "channelId", "country", "niche", "subNiches", "language", "format", "audienceProfile", "positioning", "strengths", "weaknesses", "opportunities", "recommendations", "subscriberCount", "totalViews", "videoCount", "confidence", "isConfirmed", "lastAnalyzedAt", "updatedAt"]
+    },
+    "ChannelVideo": {
+      "title": "ChannelVideo",
+      "description": "Public or manually logged video metadata and performance statistics.",
+      "type": "object",
+      "properties": {
+        "videoDocId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workspaceId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "videoId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "description": { "type": "string", "maxLength": 5000 },
+        "publishedAt": { "type": "string", "maxLength": 64 },
+        "format": { "type": "string", "enum": ["long_form", "shorts", "live"] },
+        "topic": { "type": "string", "maxLength": 200 },
+        "views": { "type": "number" },
+        "likes": { "type": "number" },
+        "comments": { "type": "number" },
+        "avgViewDurationSec": { "type": "number" },
+        "avgPercentageViewed": { "type": "number" },
+        "ctr": { "type": "number" },
+        "dataSource": { "type": "string", "enum": ["youtube_public_api", "youtube_analytics_api", "manual_entry"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["videoDocId", "workspaceId", "ownerUid", "videoId", "title", "description", "publishedAt", "format", "topic", "views", "likes", "comments", "avgViewDurationSec", "avgPercentageViewed", "ctr", "dataSource", "createdAt"]
+    },
+    "ResearchReport": {
+      "title": "ResearchReport",
+      "description": "Evidence-backed research report for niche, audience, trends, competitors, or fact-checking.",
+      "type": "object",
+      "properties": {
+        "reportId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workspaceId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reportType": { "type": "string", "enum": ["niche", "audience", "trends", "competitors", "fact_check", "audit", "retention"] },
+        "queryTopic": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "sources": { "type": "string", "maxLength": 10000 },
+        "findings": { "type": "string", "maxLength": 25000 },
+        "confidence": { "type": "string", "enum": ["verified", "partially_verified", "estimate", "unverified", "conflicting_evidence"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reportId", "workspaceId", "ownerUid", "reportType", "queryTopic", "summary", "sources", "findings", "confidence", "createdAt"]
+    },
+    "ContentIdea": {
+      "title": "ContentIdea",
+      "description": "Scored content opportunity generated by the AI Content Opportunity Engine.",
+      "type": "object",
+      "properties": {
+        "ideaId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workspaceId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 3000 },
+        "category": { "type": "string", "maxLength": 100 },
+        "format": { "type": "string", "enum": ["long_form", "shorts", "series"] },
+        "evidence": { "type": "string", "maxLength": 3000 },
+        "competitionLevel": { "type": "string", "enum": ["low", "medium", "high"] },
+        "originalAngle": { "type": "string", "maxLength": 2000 },
+        "difficulty": { "type": "string", "enum": ["beginner", "intermediate", "advanced"] },
+        "risks": { "type": "string", "maxLength": 2000 },
+        "audienceRelevanceScore": { "type": "number" },
+        "researchEvidenceScore": { "type": "number" },
+        "originalityScore": { "type": "number" },
+        "channelFitScore": { "type": "number" },
+        "productionFeasibilityScore": { "type": "number" },
+        "opportunityScore": { "type": "number" },
+        "status": { "type": "string", "enum": ["saved", "selected", "scripting", "filming", "published", "archived"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ideaId", "workspaceId", "ownerUid", "title", "description", "category", "format", "evidence", "competitionLevel", "originalAngle", "difficulty", "risks", "audienceRelevanceScore", "researchEvidenceScore", "originalityScore", "channelFitScore", "productionFeasibilityScore", "opportunityScore", "status", "createdAt", "updatedAt"]
+    },
+    "ScriptDocument": {
+      "title": "ScriptDocument",
+      "description": "Complete video script, hooks, visual storyboard scenes, SEO pack,thumbnail concepts, and voiceover delivery plan.",
+      "type": "object",
+      "properties": {
+        "scriptId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workspaceId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ideaId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "language": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "format": { "type": "string", "enum": ["long_form", "shorts"] },
+        "targetDuration": { "type": "string", "maxLength": 80 },
+        "style": { "type": "string", "maxLength": 160 },
+        "hooks": { "type": "string", "maxLength": 10000 },
+        "scriptContent": { "type": "string", "minLength": 1, "maxLength": 50000 },
+        "storyStructure": { "type": "string", "maxLength": 10000 },
+        "curiosityGaps": { "type": "string", "maxLength": 5000 },
+        "ctaOptions": { "type": "string", "maxLength": 5000 },
+        "scenes": { "type": "string", "maxLength": 40000 },
+        "seoData": { "type": "string", "maxLength": 15000 },
+        "thumbnailConcepts": { "type": "string", "maxLength": 15000 },
+        "voiceoverNotes": { "type": "string", "maxLength": 15000 },
+        "version": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["scriptId", "workspaceId", "ownerUid", "ideaId", "title", "language", "format", "targetDuration", "style", "hooks", "scriptContent", "storyStructure", "curiosityGaps", "ctaOptions", "scenes", "seoData", "thumbnailConcepts", "voiceoverNotes", "version", "createdAt", "updatedAt"]
+    },
+    "AnalyticsSnapshot": {
+      "title": "AnalyticsSnapshot",
+      "description": "Authorized YouTube Analytics snapshot or public channel summary snapshot.",
+      "type": "object",
+      "properties": {
+        "snapshotId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workspaceId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "dateRange": { "type": "string", "maxLength": 100 },
+        "source": { "type": "string", "enum": ["youtube_analytics_oauth", "youtube_public_data", "manual_creator_log"] },
+        "views": { "type": "number" },
+        "watchTimeHours": { "type": "number" },
+        "avgViewDurationSec": { "type": "number" },
+        "avgPercentageViewed": { "type": "number" },
+        "subscribersGained": { "type": "number" },
+        "likes": { "type": "number" },
+        "comments": { "type": "number" },
+        "shares": { "type": "number" },
+        "impressions": { "type": "number" },
+        "ctr": { "type": "number" },
+        "topGeographies": { "type": "string", "maxLength": 2000 },
+        "deviceBreakdown": { "type": "string", "maxLength": 2000 },
+        "retentionNotes": { "type": "string", "maxLength": 5000 },
+        "syncedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["snapshotId", "workspaceId", "ownerUid", "dateRange", "source", "views", "watchTimeHours", "avgViewDurationSec", "avgPercentageViewed", "subscribersGained", "likes", "comments", "shares", "impressions", "ctr", "topGeographies", "deviceBreakdown", "retentionNotes", "syncedAt"]
+    },
+    "ContentProject": {
+      "title": "ContentProject",
+      "description": "Production project and Content Calendar scheduling item.",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workspaceId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "projectName": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "topic": { "type": "string", "maxLength": 300 },
+        "format": { "type": "string", "enum": ["long_form", "shorts", "series"] },
+        "status": { "type": "string", "enum": ["draft", "researching", "scripting", "production", "ready_to_publish", "published"] },
+        "scheduledDate": { "type": "string", "maxLength": 64 },
+        "slotType": { "type": "string", "enum": ["analytics_backed_slot", "testing_slot"] },
+        "ideaId": { "type": "string", "maxLength": 128 },
+        "scriptId": { "type": "string", "maxLength": 128 },
+        "notes": { "type": "string", "maxLength": 5000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["projectId", "workspaceId", "ownerUid", "projectName", "topic", "format", "status", "scheduledDate", "slotType", "ideaId", "scriptId", "notes", "createdAt", "updatedAt"]
+    },
+    "UsageRecord": {
+      "title": "UsageRecord",
+      "description": "AI and API consumption record per user for cost and quota governance.",
+      "type": "object",
+      "properties": {
+        "recordId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "workspaceId": { "type": "string", "maxLength": 128 },
+        "provider": { "type": "string", "enum": ["gemini", "youtube_data", "youtube_analytics", "search_grounding", "image_gen", "voice_tts"] },
+        "model": { "type": "string", "maxLength": 120 },
+        "operation": { "type": "string", "maxLength": 160 },
+        "inputTokens": { "type": "number" },
+        "outputTokens": { "type": "number" },
+        "estimatedCostUsd": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recordId", "uid", "workspaceId", "provider", "model", "operation", "inputTokens", "outputTokens", "estimatedCostUsd", "createdAt"]
+    },
+    "BetaInvitation": {
+      "title": "BetaInvitation",
+      "description": "Private 50-user beta invitation record managed by Super Admin.",
+      "type": "object",
+      "properties": {
+        "inviteId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "inviteCode": { "type": "string", "minLength": 4, "maxLength": 64 },
+        "status": { "type": "string", "enum": ["pending", "accepted", "revoked", "expired"] },
+        "invitedBy": { "type": "string", "maxLength": 128 },
+        "maxDailyAiRequests": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["inviteId", "email", "inviteCode", "status", "invitedBy", "maxDailyAiRequests", "createdAt", "expiresAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security and action audit trail.",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorEmail": { "type": "string", "maxLength": 254 },
+        "action": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "resource": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "details": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["logId", "actorUid", "actorEmail", "action", "resource", "details", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles isolated by userId (owner or super_admin)."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Trusted Super Admin registry."
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Creator workspaces strictly isolated to ownerUid."
+    },
+    "/youtubeConnections/{connectionId}": {
+      "schema": { "$ref": "#/entities/YouTubeConnection" },
+      "description": "YouTube connection status records isolated to ownerUid."
+    },
+    "/channelProfiles/{workspaceId}": {
+      "schema": { "$ref": "#/entities/ChannelProfile" },
+      "description": "AI channel intelligence profile isolated to ownerUid."
+    },
+    "/videos/{videoDocId}": {
+      "schema": { "$ref": "#/entities/ChannelVideo" },
+      "description": "Uploaded or tracked channel videos isolated to ownerUid."
+    },
+    "/researchReports/{reportId}": {
+      "schema": { "$ref": "#/entities/ResearchReport" },
+      "description": "Niche, audience, trend, competitor, and fact-check reports isolated to ownerUid."
+    },
+    "/contentIdeas/{ideaId}": {
+      "schema": { "$ref": "#/entities/ContentIdea" },
+      "description": "AI Content Opportunity Engine ideas isolated to ownerUid."
+    },
+    "/scripts/{scriptId}": {
+      "schema": { "$ref": "#/entities/ScriptDocument" },
+      "description": "Generated scripts, hooks, visual plans, and SEO packs isolated to ownerUid."
+    },
+    "/analyticsSnapshots/{snapshotId}": {
+      "schema": { "$ref": "#/entities/AnalyticsSnapshot" },
+      "description": "Channel analytics snapshots isolated to ownerUid."
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/ContentProject" },
+      "description": "Creator content projects and calendar events isolated to ownerUid."
+    },
+    "/usageRecords/{recordId}": {
+      "schema": { "$ref": "#/entities/UsageRecord" },
+      "description": "AI and API token/cost records visible to the user and Super Admin."
+    },
+    "/invitations/{inviteId}": {
+      "schema": { "$ref": "#/entities/BetaInvitation" },
+      "description": "50-user beta invitations managed by Super Admin and redeemable by invited email."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Security and operational audit logs."
+    }
+  }
+}
