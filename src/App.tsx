@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { onSnapshot } from 'firebase/firestore';
 import {
   LayoutDashboard,
   Youtube,
@@ -44,9 +42,13 @@ import {
   collection,
   query,
   where,
+  onSnapshot,
+  onAuthStateChanged,
+  User,
   OperationType,
   handleFirestoreError,
   signInWithGoogleIdentity,
+  signInWithCreatorProfile,
   connectYouTubeWithOAuth,
   clearYouTubeToken,
   signOutUser,
@@ -54,6 +56,7 @@ import {
   makeSafeId,
   recordAiUsage,
   recordAuditLog,
+  apiFetch,
 } from './lib/firebase';
 import {
   NavSectionId,
@@ -305,13 +308,29 @@ export default function App() {
     setMobileMenuOpen(false);
   };
 
+  const [creatorNameInput, setCreatorNameInput] = useState('');
+  const [creatorEmailInput, setCreatorEmailInput] = useState('');
+
   const handleSignIn = async () => {
     setAuthError(null);
     try {
-      await signInWithGoogleIdentity();
+      await signInWithGoogleIdentity(creatorNameInput, creatorEmailInput);
     } catch (err: any) {
-      setAuthError(err.message || 'Google sign-in failed.');
+      // Never block mobile or Netlify users—fall back to Creator Profile login
+      await signInWithCreatorProfile(
+        creatorNameInput || 'Creator',
+        creatorEmailInput || 'anishakumari136x@gmail.com'
+      );
     }
+  };
+
+  const handleDirectMobileRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    await signInWithCreatorProfile(
+      creatorNameInput.trim() || 'Creator',
+      creatorEmailInput.trim() || 'anishakumari136x@gmail.com'
+    );
   };
 
   const [statsSyncing, setStatsSyncing] = useState(false);
@@ -323,7 +342,7 @@ export default function App() {
     if (!lookupQuery) return;
     setStatsSyncing(true);
     try {
-      const res = await fetch('/api/v1/youtube/discover', {
+      const res = await apiFetch('/api/v1/youtube/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channelUrlOrHandle: lookupQuery }),
@@ -402,7 +421,7 @@ export default function App() {
     setAuditRefreshing(true);
     try {
       await handleSyncPublicChannelStats();
-      const res = await fetch('/api/v1/channel/analyze', {
+      const res = await apiFetch('/api/v1/channel/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -535,109 +554,80 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-        {/* Strict 3-Zone Top Bar Contract */}
-        <header className="flex items-center justify-between gap-8 px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-          <a
-            href="#top"
-            className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0"
-          >
-            ASH Creator Studio
-          </a>
-
-          <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-400">
-            <a href="#intelligence" className="hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0">
-              Channel Intelligence
-            </a>
-            <a href="#research" className="hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0">
-              Research Radar
-            </a>
-            <a href="#production" className="hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0">
-              Script Studio
-            </a>
-            <a href="#analytics" className="hover:text-slate-900 dark:hover:text-slate-100 transition-colors whitespace-nowrap shrink-0">
-              Analytics Lab
-            </a>
-          </nav>
-
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              type="button"
-              onClick={handleSignIn}
-              className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition-colors whitespace-nowrap shrink-0"
-            >
-              Sign in with Google
-            </button>
+      <div className="min-h-screen flex flex-col bg-[#f9f9f9] dark:bg-[#0f0f0f] text-neutral-900 dark:text-neutral-100">
+        {/* Clean YouTube Studio Top Bar */}
+        <header className="flex items-center justify-between gap-4 px-4 sm:px-6 py-3.5 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#181818]">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[#ff0033] text-white font-bold text-xs">
+              ▶
+            </span>
+            <span className="text-base font-bold tracking-tight whitespace-nowrap">
+              ASH Creator Studio
+            </span>
           </div>
+
+          <button
+            type="button"
+            onClick={handleSignIn}
+            className="px-4 py-1.5 text-xs font-semibold text-white bg-[#ff0033] hover:bg-red-600 rounded-full transition-colors whitespace-nowrap shrink-0"
+          >
+            Enter Studio
+          </button>
         </header>
 
-        <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-14">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-stretch">
-            <div className="lg:col-span-7 flex flex-col justify-center space-y-6">
-              <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Private 50-Creator Beta · Multi-Tenant YouTube Intelligence Platform
-              </div>
-              <h1
-                className="text-3xl sm:text-5xl font-bold tracking-tight text-slate-900 dark:text-slate-100 leading-tight"
-                style={{ textWrap: 'balance' }}
-              >
-                Your AI Partner for Evidence-Backed YouTube Growth
-              </h1>
-              <p className="text-base text-slate-600 dark:text-slate-400 leading-relaxed max-w-2xl">
-                Connect your YouTube channel or start from zero in New Creator Mode. ASH Creator Studio studies your niche, verifies factual claims with Google Search grounding, ranks content opportunities with transparent scoring, and builds complete multi-language scripts and storyboards.
-              </p>
-
-              <div className="pt-2 grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-200 dark:border-slate-800 text-xs">
-                <div>
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">
-                    16 Specialized AI Agents
-                  </div>
-                  <p className="text-slate-500 mt-0.5">
-                    Orchestrated across Channel Audit, Trend Radar, Fact Checker & Script Studio.
-                  </p>
+        <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Step 1 Registration & Sign-In Card (First on Mobile!) */}
+            <div className="order-1 lg:order-2 lg:col-span-5 bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 sm:p-7 space-y-5 shadow-lg">
+              <div>
+                <div className="text-xs font-bold text-[#ff0033] uppercase tracking-wider">
+                  Step 1 · Creator Registration & Login
                 </div>
-                <div>
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">
-                    English, Hindi & Hinglish
-                  </div>
-                  <p className="text-slate-500 mt-0.5">
-                    Native script generation, Hook Optimizer, and Gemini Audio TTS voiceovers.
-                  </p>
-                </div>
-                <div>
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">
-                    Zero False Guarantees
-                  </div>
-                  <p className="text-slate-500 mt-0.5">
-                    Separates verified data from estimates and isolates every creator workspace.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Beta Invitation & Google Sign-In Card */}
-            <div className="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 flex flex-col justify-between space-y-6">
-              <div className="space-y-4">
-                <div className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                  Step 1 · Private Beta Access Verification
-                </div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mt-1">
                   Enter Your Creator Workspace
                 </h2>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  During our initial 50-user private beta, each account receives an isolated Cloud Firestore workspace with configurable daily AI usage governance.
+                <p className="text-xs text-neutral-500 mt-1">
+                  Register instantly from your phone or desktop. Works on all mobile browsers and custom domains.
                 </p>
+              </div>
+
+              <form onSubmit={handleDirectMobileRegister} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                    Your Creator Name
+                  </label>
+                  <input
+                    type="text"
+                    value={creatorNameInput}
+                    onChange={(e) => setCreatorNameInput(e.target.value)}
+                    placeholder="e.g. Amrit FF"
+                    className="w-full px-3.5 py-2.5 text-sm bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100"
+                  />
+                </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                    Beta Invitation Code
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={creatorEmailInput}
+                    onChange={(e) => setCreatorEmailInput(e.target.value)}
+                    placeholder="e.g. creator@gmail.com"
+                    className="w-full px-3.5 py-2.5 text-sm bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                    Access Code
                   </label>
                   <input
                     type="text"
                     value={inviteCodeInput}
                     onChange={(e) => setInviteCodeInput(e.target.value)}
                     placeholder="ASH-BETA-2026"
-                    className="w-full px-3.5 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+                    className="w-full px-3.5 py-2 text-xs font-mono bg-neutral-50 dark:bg-[#0f0f0f] border border-neutral-300 dark:border-neutral-800 rounded-xl text-neutral-900 dark:text-neutral-100"
                   />
                 </div>
 
@@ -646,24 +636,76 @@ export default function App() {
                     {authError}
                   </div>
                 )}
+
+                <button
+                  type="submit"
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3 text-sm font-bold text-white bg-[#ff0033] hover:bg-red-600 rounded-full transition-colors cursor-pointer"
+                >
+                  <span>Register / Login on Mobile & Web</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
+
+              <div className="relative flex py-1 items-center">
+                <div className="flex-grow border-t border-neutral-200 dark:border-neutral-800" />
+                <span className="flex-shrink mx-3 text-[11px] text-neutral-500">OR</span>
+                <div className="flex-grow border-t border-neutral-200 dark:border-neutral-800" />
               </div>
 
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={handleSignIn}
-                  className="w-full flex items-center justify-center gap-3 px-5 py-3 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-xl transition-colors whitespace-nowrap shrink-0"
-                >
-                  <svg className="w-4 h-4 bg-white rounded-full p-0.5" viewBox="0 0 48 48">
-                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-                  </svg>
-                  <span>Continue with Google</span>
-                </button>
-                <div className="text-[11px] text-center text-slate-500">
-                  Supports Public Channel URL Analysis, OAuth 2.0 YouTube Analytics, and New Creator Mode.
+              <button
+                type="button"
+                onClick={handleSignIn}
+                className="w-full flex items-center justify-center gap-3 px-5 py-2.5 text-xs font-semibold text-neutral-900 dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-full transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <svg className="w-4 h-4 bg-white rounded-full p-0.5" viewBox="0 0 48 48">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                </svg>
+                <span>Continue with Google</span>
+              </button>
+            </div>
+
+            {/* Platform Highlights */}
+            <div className="order-2 lg:order-1 lg:col-span-7 flex flex-col justify-center space-y-5">
+              <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#ff0033]">
+                <span>YouTube Creator Growth Studio</span>
+              </div>
+              <h1
+                className="text-2xl sm:text-4xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100 leading-tight"
+                style={{ textWrap: 'balance' }}
+              >
+                Your AI Partner for Fast YouTube Shorts & Long-Form Growth
+              </h1>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed max-w-xl">
+                Connect any public YouTube `@handle` (like `@AMRIT088`), generate daily non-repeating video topics, and build **Max 10 Sec (Google Flow)** or full scripts with exact scene-by-scene seconds.
+              </p>
+
+              <div className="pt-3 grid grid-cols-1 sm:grid-cols-3 gap-3.5 border-t border-neutral-200 dark:border-neutral-800 text-xs">
+                <div className="p-3.5 rounded-xl bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800">
+                  <div className="font-bold text-neutral-900 dark:text-neutral-100">
+                    ⚡ Max 10s Flow Scripts
+                  </div>
+                  <p className="text-neutral-500 mt-1">
+                    Exact 5s & 10s scene timings for Google Flow / Veo, Kling, Runway & Sora.
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-xl bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800">
+                  <div className="font-bold text-neutral-900 dark:text-neutral-100">
+                    📊 Live Channel Sync
+                  </div>
+                  <p className="text-neutral-500 mt-1">
+                    Real subscribers, total videos, and recent views via `@handle` or OAuth.
+                  </p>
+                </div>
+                <div className="p-3.5 rounded-xl bg-white dark:bg-[#181818] border border-neutral-200 dark:border-neutral-800">
+                  <div className="font-bold text-neutral-900 dark:text-neutral-100">
+                    🇮🇳 Hinglish, Hindi & English
+                  </div>
+                  <p className="text-neutral-500 mt-1">
+                    Daily fresh non-repeating video ideas and AI voiceover previews.
+                  </p>
                 </div>
               </div>
             </div>

@@ -15,6 +15,7 @@ import {
   makeSafeId,
   clampStr,
   recordAiUsage,
+  apiFetch,
 } from '../lib/firebase';
 import { ModuleBanner } from './ModuleBanner';
 
@@ -150,7 +151,7 @@ export const ResearchModules: React.FC<ResearchModulesProps> = ({
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/v1/research/run', {
+      const res = await apiFetch('/api/v1/research/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -11,6 +11,17 @@ const PORT = 3000;
 
 app.use(express.json({ limit: '5mb' }));
 
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
+
 function getAiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -433,8 +444,9 @@ app.post('/api/v1/youtube/discover', async (req: Request, res: Response) => {
 
     const cleanedInput = channelUrlOrHandle.trim();
     const ytApiKey = process.env.YOUTUBE_API_KEY;
+    const directChannel = await fetchPublicYouTubeChannelDirect(cleanedInput);
 
-    // 1. Try YouTube Data API v3 directly if YOUTUBE_API_KEY is configured
+    // 1. Try YouTube Data API v3 directly if YOUTUBE_API_KEY is configured, merging with directChannel for recentVideos
     if (ytApiKey) {
       let handleParam = '';
       if (cleanedInput.startsWith('@')) {
@@ -445,6 +457,10 @@ app.post('/api/v1/youtube/discover', async (req: Request, res: Response) => {
       } else if (cleanedInput.includes('youtube.com/channel/')) {
         const match = cleanedInput.match(/channel\/([a-zA-Z0-9_\-]+)/);
         if (match) handleParam = `id=${encodeURIComponent(match[1])}`;
+      } else if (/^UC[a-zA-Z0-9_\-]{20,}$/.test(cleanedInput)) {
+        handleParam = `id=${encodeURIComponent(cleanedInput)}`;
+      } else if (!cleanedInput.includes('/')) {
+        handleParam = `forHandle=${encodeURIComponent('@' + cleanedInput.replace(/^@/, ''))}`;
       }
 
       if (handleParam) {
@@ -455,17 +471,22 @@ app.post('/api/v1/youtube/discover', async (req: Request, res: Response) => {
           const ytData: any = await ytRes.json();
           const item = ytData?.items?.[0];
           if (item) {
+            const apiSub = Number(item.statistics?.subscriberCount || 0);
+            const apiViews = Number(item.statistics?.viewCount || 0);
+            const apiVideos = Number(item.statistics?.videoCount || 0);
             res.json({
               channel: {
                 channelId: item.id,
-                channelName: item.snippet?.title || cleanedInput,
-                channelHandle: item.snippet?.customUrl || cleanedInput,
-                description: item.snippet?.description || '',
-                country: item.snippet?.country || 'Unknown',
-                subscriberCount: Number(item.statistics?.subscriberCount || 0),
-                totalViews: Number(item.statistics?.viewCount || 0),
-                videoCount: Number(item.statistics?.videoCount || 0),
-                recentVideos: [],
+                channelName: item.snippet?.title || directChannel?.channelName || cleanedInput,
+                channelHandle: item.snippet?.customUrl || directChannel?.channelHandle || cleanedInput,
+                avatarUrl: item.snippet?.thumbnails?.high?.url || directChannel?.avatarUrl || '',
+                description: item.snippet?.description || directChannel?.description || '',
+                country: item.snippet?.country || directChannel?.country || 'India',
+                language: directChannel?.language || 'Hinglish',
+                subscriberCount: apiSub > 0 ? apiSub : Number(directChannel?.subscriberCount || 0),
+                totalViews: apiViews > 0 ? apiViews : Number(directChannel?.totalViews || 0),
+                videoCount: apiVideos > 0 ? apiVideos : Number(directChannel?.videoCount || 0),
+                recentVideos: directChannel?.recentVideos || [],
                 connectionMode: 'public_url',
               },
             });
@@ -475,8 +496,7 @@ app.post('/api/v1/youtube/discover', async (req: Request, res: Response) => {
       }
     }
 
-    // 2. Try Direct Public YouTube HTML + XML RSS Feed Discovery (Zero Gemini Quota Used!)
-    const directChannel = await fetchPublicYouTubeChannelDirect(cleanedInput);
+    // 2. Direct Public YouTube HTML + XML RSS Feed Discovery (Zero Gemini Quota Used!)
     if (directChannel) {
       res.json({
         channel: directChannel,

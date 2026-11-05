@@ -29,6 +29,7 @@ import {
   makeSafeId,
   clampStr,
   recordAiUsage,
+  apiFetch,
 } from '../lib/firebase';
 import { ModuleBanner } from './ModuleBanner';
 
@@ -119,7 +120,7 @@ export const ProductionStudio: React.FC<ProductionStudioProps> = ({
       channelProfile?.niche ||
       'High-value creator video topics';
     try {
-      const res = await fetch('/api/v1/ideas/generate', {
+      const res = await apiFetch('/api/v1/ideas/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -235,7 +236,7 @@ export const ProductionStudio: React.FC<ProductionStudioProps> = ({
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/v1/scripts/generate', {
+      const res = await apiFetch('/api/v1/scripts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -320,7 +321,7 @@ export const ProductionStudio: React.FC<ProductionStudioProps> = ({
     setErrorMsg(null);
     try {
       const textToSpeak = editedScriptBody || activeScript.scriptContent;
-      const res = await fetch('/api/v1/voiceover/synthesize', {
+      const res = await apiFetch('/api/v1/voiceover/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

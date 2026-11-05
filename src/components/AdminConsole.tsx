@@ -49,31 +49,23 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
     setLoading(true);
     try {
       const [uSnap, iSnap, usgSnap, logSnap] = await Promise.all([
-        getDocs(collection(db, 'users')).catch((e) =>
-          handleFirestoreError(e, OperationType.LIST, 'users')
-        ),
-        getDocs(collection(db, 'invitations')).catch((e) =>
-          handleFirestoreError(e, OperationType.LIST, 'invitations')
-        ),
-        getDocs(collection(db, 'usageRecords')).catch((e) =>
-          handleFirestoreError(e, OperationType.LIST, 'usageRecords')
-        ),
-        getDocs(collection(db, 'auditLogs')).catch((e) =>
-          handleFirestoreError(e, OperationType.LIST, 'auditLogs')
-        ),
+        getDocs(collection(db, 'users')),
+        getDocs(collection(db, 'invitations')),
+        getDocs(collection(db, 'usageRecords')),
+        getDocs(collection(db, 'auditLogs')),
       ]);
 
-      setUsers(uSnap.docs.map((d) => d.data() as UserProfile));
-      setInvitations(iSnap.docs.map((d) => d.data() as BetaInvitation));
+      setUsers(uSnap.docs.map((d: any) => d.data() as UserProfile));
+      setInvitations(iSnap.docs.map((d: any) => d.data() as BetaInvitation));
       setUsageRecords(
         usgSnap.docs
-          .map((d) => d.data() as UsageRecord)
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .map((d: any) => d.data() as UsageRecord)
+          .sort((a: UsageRecord, b: UsageRecord) => b.createdAt.localeCompare(a.createdAt))
       );
       setAuditLogs(
         logSnap.docs
-          .map((d) => d.data() as AuditLog)
-          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .map((d: any) => d.data() as AuditLog)
+          .sort((a: AuditLog, b: AuditLog) => b.createdAt.localeCompare(a.createdAt))
       );
     } finally {
       setLoading(false);

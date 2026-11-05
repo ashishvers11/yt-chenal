@@ -11,6 +11,7 @@ import {
   clampStr,
   recordAiUsage,
   recordAuditLog,
+  apiFetch,
 } from '../lib/firebase';
 import {
   Workspace,
@@ -85,7 +86,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/v1/youtube/discover', {
+      const res = await apiFetch('/api/v1/youtube/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ channelUrlOrHandle: channelInput.trim() }),
@@ -113,7 +114,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       const { accessToken, scopes } = await connectYouTubeWithOAuth(includeAnalyticsScope);
       setOauthGrantedScopes(scopes);
 
-      const res = await fetch('/api/v1/youtube/channels', {
+      const res = await apiFetch('/api/v1/youtube/channels', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const data = await res.json();
@@ -165,7 +166,7 @@ export const OnboardingWizard: React.FC<OnboardingWizardProps> = ({
       const isNewCreator =
         connectionOption === 'new_creator' || Number(discoveredChannel.videoCount || 0) === 0;
 
-      const res = await fetch('/api/v1/channel/analyze', {
+      const res = await apiFetch('/api/v1/channel/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -31,6 +31,7 @@ import {
   getCachedYouTubeToken,
   connectYouTubeWithOAuth,
   recordAiUsage,
+  apiFetch,
 } from '../lib/firebase';
 import { ModuleBanner, ConfirmModal } from './ModuleBanner';
 
@@ -125,7 +126,7 @@ export const GrowthAndAnalytics: React.FC<GrowthAndAnalyticsProps> = ({
       setLoading(true);
       setErrorMsg(null);
       try {
-        const res = await fetch('/api/v1/coach/chat', {
+        const res = await apiFetch('/api/v1/coach/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -358,7 +359,7 @@ export const GrowthAndAnalytics: React.FC<GrowthAndAnalyticsProps> = ({
           token = authRes.accessToken;
         }
 
-        const res = await fetch('/api/v1/analytics/sync', {
+        const res = await apiFetch('/api/v1/analytics/sync', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -456,7 +457,7 @@ export const GrowthAndAnalytics: React.FC<GrowthAndAnalyticsProps> = ({
       setLoading(true);
       setErrorMsg(null);
       try {
-        const res = await fetch('/api/v1/youtube/discover', {
+        const res = await apiFetch('/api/v1/youtube/discover', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
